@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "osidb-mcp"
-version = "0.1.3"
+version = "0.1.4"
 description = "Model Context Protocol (MCP) server for OSIDB using osidb-bindings"
 readme = "README.md"
 license = "MIT"

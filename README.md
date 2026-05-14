@@ -58,20 +58,20 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 |------|---------|
 | `osidb_status` | OSIDB API health / status payload (good connectivity check). |
 | `osidb_whoami` | Current authenticated user / profile from `GET /osidb/whoami`. |
-| `flaw_get` | One flaw by CVE id or flaw id; optional `include_fields` / `exclude_fields` to trim the payload. |
+| `flaw_get` | One flaw by CVE id or internal **`uuid`**; optional `include_fields` / `exclude_fields`. Adds **`osidb_flaw_uuid`** at top level when there is no CVE yet. |
 | `search_flaws` | High-level search: keyword and/or CVE ids, severity (`severity` / `severities`), changed-date range (`date_from` / `date_to`), PS `product_modules` / `product_components`, workflow, embargo, owner; keyword-only uses OSIDB full-text search. |
-| `get_flaw_details` | Full flaw plus **affects** (products/streams) and **trackers** (Jira/Bugzilla-style filings); toggles `include_affects` / `include_trackers` and per-section limits. |
+| `get_flaw_details` | Full flaw plus **affects** and **trackers**; `flaw_id` is CVE or **`uuid`**. If no CVE, nested lists use **`flaw__uuid`** / **`affects__flaw__uuid`**. |
 | `get_cve_summary` | Executive rollups: counts **by severity** and **by workflow** plus total under shared filters (`group_by`: `severity` \| `workflow` \| `both`); multiple `flaws_count` calls; see `partial_errors` if a bucket fails. |
-| `flaws_list` | Raw list API: components, nested affects filters (`affects_ps_*`), workflow, impact, owner, embargo, dates, `search`, allowlisted `extra_query` (OSIDB v2 query keys); `limit` ≤ 100. |
+| `flaws_list` | Raw list API: components, nested affects filters (`affects_ps_*`), workflow, impact, owner, embargo, dates, `search`, allowlisted `extra_query` (OSIDB v2 query keys); `limit` ≤ 100. Success responses include **`identifier_hint`** (CVE vs `uuid`). |
 | `flaws_count` | Same filter surface as `flaws_list` but returns **count** only (no flaw bodies). |
-| `flaws_search` | Full-text search over flaws (`search` parameter); paginated like list APIs. |
-| `affects_list` | Rows keyed by **affect** (`ps_module` / `ps_component` / `ps_update_stream`) with `flaw__*` filters (e.g. `flaw_workflow_state_in`, `flaw_impact_in`). |
-| `trackers_list` | Tracker filings with optional CVE / PS module / PS component filters and optional `tracker_type`. |
+| `flaws_search` | Full-text search over flaws (`search` parameter); paginated like list APIs. Success responses include **`identifier_hint`**. |
+| `affects_list` | Rows keyed by **affect** with `flaw__*` filters; scope flaw by **`flaw_cve_id`** / **`flaw_cve_id_in`** or **`flaw_uuid`** / **`flaw_uuid_in`** when there is no CVE. |
+| `trackers_list` | Tracker filings; scope by **`affects_flaw_cve_id`** (or `_in`) or **`affects_flaw_uuid`** (or `_in`) when there is no CVE; optional PS filters and `tracker_type`. |
 | `flaw_comments_list` | Paginated **discussion comments** for a flaw id. |
 | `flaw_references_list` | Paginated **external references** (URLs, advisory refs, etc.) for a flaw id. |
 | `flaw_cvss_scores_list` | Paginated **CVSS score** rows (issuer/version/vector) for a flaw id. |
 | `search_component` | Flaws whose flaw-level **components** intersect `components_in` (v2 flaws list); optional impact/workflow/date filters. |
-| `query_affects` | **Affect rows** for one CVE (`flaw_cve_id`) or many (`flaw_cve_id_in`); v2 affects API (wrapper over `affects_list`). |
+| `query_affects` | **Affect rows** by CVE (`flaw_cve_id` / `flaw_cve_id_in`) and/or flaw UUID (`flaw_uuid` / `flaw_uuid_in`); wrapper over `affects_list`. |
 | `get_pending_exploit_actions` | **[EXPERIMENTAL]** `GET /exploits/api/v1|v2/report/pending` — pending exploit / IR actions; may 404 if exploits app is off. |
 
 `limit` (and analogous list limits) are capped at **100** per request unless noted otherwise on a tool.
@@ -81,6 +81,16 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 - **Triage / natural language style:** `search_flaws`, `get_flaw_details`, `get_cve_summary`.
 - **Exact OpenAPI filters or rare query keys:** `flaws_list` / `flaws_count` with `extra_query` (allowlisted keys only).
 - **Affect- or tracker-centric views:** `affects_list`, `trackers_list`, or the subresource tools under a known flaw id.
+
+### Flaw identifiers (CVE vs internal `uuid`)
+
+OSIDB flaws always have an internal **`uuid`**. A **`cve_id`** may be missing until one is assigned — that is normal, not “no identifier.”
+
+- List/search responses include each flaw’s **`uuid`** in JSON. **`flaws_list`**, **`flaws_search`**, and **`search_flaws`** (structured path) also return an **`identifier_hint`** string for agents.
+- **`flaw_get`** / **`get_flaw_details`**: when there is no usable CVE string, the tool adds top-level **`osidb_flaw_uuid`** (same value as `flaw.uuid`) so follow-up calls are obvious.
+- **`get_flaw_details`**: if `cve_id` is empty, affects and trackers are loaded using **`flaw__uuid`** / **`affects__flaw__uuid`** automatically.
+- **`affects_list`** / **`query_affects`**: use **`flaw_uuid`** / **`flaw_uuid_in`** to scope rows when there is no CVE. **`trackers_list`**: use **`affects_flaw_uuid`** / **`affects_flaw_uuid_in`**.
+- **`flaw_comments_list`**, **`flaw_references_list`**, **`flaw_cvss_scores_list`**: the `flaw_id` argument is the same as for **`flaw_get`** — CVE string **or** internal **`uuid`**. If you use **`include_fields`** on **`flaw_get`**, include **`uuid`** when you still need it downstream.
 
 ## Analyst examples
 

@@ -10,6 +10,7 @@ This document describes each MCP tool exposed by **osidb-mcp**: what it is for, 
 - **`extra_query`:** On `flaws_list`, `flaws_count`, `affects_list`, and `trackers_list`, you may pass additional query keys only if they appear on the official OSIDB **v2** list endpoint for that resource. Unknown keys are rejected. There are caps on how many keys and how long list values may be (see `query_filters.py` in the repo).
 - **`api_version`:** Optional string forwarded to bindings when you need a non-default OSIDB API version; leave unset for typical v2 behaviour.
 - **Errors:** On failure, tools return JSON with `"ok": false` plus `error` / `detail` / `status_code` fields where applicable, rather than throwing inside the MCP layer.
+- **CVE vs `uuid`:** Every flaw has a stable internal **`uuid`** in OSIDB. **`cve_id`** may be empty until assigned. Use **`uuid`** as `flaw_id` for retrieve/subresource tools when there is no CVE; use **`flaw_uuid`** / **`affects_flaw_uuid`** on list APIs. **`flaws_list`** / **`flaws_search`** responses include **`identifier_hint`**; **`flaw_get`** / **`get_flaw_details`** may add **`osidb_flaw_uuid`** when there is no CVE. Omitting **`uuid`** from **`include_fields`** hides it from the payload.
 
 ---
 
@@ -63,7 +64,7 @@ Q: "Retrieve flaw UUID … with only the fields I need"
 - `flaw_id` — CVE id (e.g. `CVE-2024-6387`) or internal flaw id string your OSIDB accepts for `GET /flaws/…`.
 - `include_fields` / `exclude_fields` — Optional lists to trim the JSON (reduces token usage).
 
-**Returns:** `{ "ok": true, "flaw": … }`.
+**Returns:** `{ "ok": true, "flaw": … }`. If there is no CVE string on the flaw, **`osidb_flaw_uuid`** is duplicated at the top level (same as `flaw.uuid`) when `uuid` is present in the payload.
 
 **Limitations:** Does **not** include nested affects or trackers; use `get_flaw_details` for that.
 
@@ -125,7 +126,7 @@ Q: "What modules are affected and what trackers exist for this CVE?"
 - `include_affects` / `include_trackers` — Booleans (default `true`); turn off to save bandwidth.
 - `affects_limit` / `trackers_limit` — Per-section caps (each clamped to 100).
 
-**Returns:** `{ "ok", "flaw", "affects": <affects_list envelope>, "trackers": <trackers_list envelope> }`.
+**Returns:** `{ "ok", "flaw", "affects": <affects_list envelope>, "trackers": <trackers_list envelope> }`. When there is no CVE, nested sections are scoped by **`flaw__uuid`** / **`affects__flaw__uuid`**, and **`osidb_flaw_uuid`** may appear at the top level like `flaw_get`.
 
 **Limitations:** Each section is paginated separately; if affects or trackers exceed the limit, increase limits or call `affects_list` / `trackers_list` with offsets.
 
@@ -218,7 +219,7 @@ Q: "All affects on ps_update_stream rhel-9.6.z for non-LOW impact flaws"
 Q: "Affects for modules matching rhel-9 with flaw workflow NEW"
 ```
 
-**Typical parameters:** `ps_module` / `ps_module_in`, `ps_component` / `ps_component_in`, `ps_update_stream` / `ps_update_stream_in`, `flaw_cve_id` / `flaw_cve_id_in`, `flaw_workflow_state_in`, `flaw_impact_in`, `flaw_components_in`, `embargoed`, field lists, `extra_query`.
+**Typical parameters:** `ps_module` / `ps_module_in`, `ps_component` / `ps_component_in`, `ps_update_stream` / `ps_update_stream_in`, `flaw_cve_id` / `flaw_cve_id_in`, **`flaw_uuid`** / **`flaw_uuid_in`** (when the flaw has no CVE yet), `flaw_workflow_state_in`, `flaw_impact_in`, `flaw_components_in`, `embargoed`, field lists, `extra_query`.
 
 **Returns:** Paginated affect objects.
 
@@ -237,7 +238,7 @@ Q: "All trackers for CVE-2024-6387"
 Q: "Trackers for affects on component httpd in rhel-8"
 ```
 
-**Typical parameters:** `affects_flaw_cve_id`, `affects_flaw_cve_id_in`, `affects_ps_module_in`, `affects_ps_component_in`, `tracker_type`, pagination, `extra_query`.
+**Typical parameters:** `affects_flaw_cve_id`, `affects_flaw_cve_id_in`, **`affects_flaw_uuid`**, **`affects_flaw_uuid_in`**, `affects_ps_module_in`, `affects_ps_component_in`, `tracker_type`, pagination, `extra_query`.
 
 **Returns:** Paginated tracker rows.
 
@@ -309,16 +310,17 @@ Q: "Flaws tagged with component runc at the flaw level"
 
 ## 16. `query_affects`
 
-**Purpose:** Convenience wrapper over **`affects_list`** for **CVE-centric** pulls: one CVE (`flaw_cve_id`) or many (`flaw_cve_id_in`), optional PS filters.
+**Purpose:** Convenience wrapper over **`affects_list`** for **CVE- or UUID-scoped** pulls: one CVE (`flaw_cve_id`) or many (`flaw_cve_id_in`), or one flaw UUID (`flaw_uuid`) / many (`flaw_uuid_in`), plus optional PS filters.
 
 **Example prompts:**
 
 ```
 Q: "All affect rows for CVE-2024-6387"
 Q: "Affects for these ten CVEs on rhel-9"
+Q: "Affects for flaw uuid … (no CVE yet)"
 ```
 
-**Typical parameters:** `flaw_cve_id`, `flaw_cve_id_in`, `ps_module_in`, `ps_component_in`, `limit`, `offset`, `extra_query`.
+**Typical parameters:** `flaw_cve_id`, `flaw_cve_id_in`, `flaw_uuid`, `flaw_uuid_in`, `ps_module_in`, `ps_component_in`, `limit`, `offset`, `extra_query`.
 
 **Limitations:** Inherits all `affects_list` semantics and limits; large `flaw_cve_id_in` lists are still subject to URL/query length limits on the server.
 

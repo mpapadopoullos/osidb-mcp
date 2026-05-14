@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import importlib
 from typing import Any, Literal
+from uuid import UUID
 
 import requests
 from osidb_bindings.bindings.python_client.api.osidb import osidb_whoami_retrieve
@@ -55,6 +56,44 @@ _trackers_list = importlib.import_module(
     "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_trackers_list"
 )
 TRACKERS_EXTRA_KEYS = frozenset(_trackers_list.QUERY_PARAMS.keys())
+
+# Shown on flaw list/search responses so agents keep the stable OSIDB id when cve_id is empty.
+_FLAW_LIST_IDENTITY_HINT = (
+    "Each flaw has `uuid` (internal OSIDB id). When `cve_id` is null or empty, use that `uuid` "
+    "as `flaw_id` for flaw_get / get_flaw_details / flaw_*_list; for affects_list use `flaw_uuid`, "
+    "for trackers_list use `affects_flaw_uuid`."
+)
+
+
+def _flaw_has_usable_cve_id(flaw: dict[str, Any]) -> bool:
+    cve = flaw.get("cve_id")
+    return isinstance(cve, str) and bool(cve.strip())
+
+
+def _envelope_osidb_flaw_uuid_when_no_cve(body: dict[str, Any]) -> dict[str, Any]:
+    """Duplicate flaw uuid at top level when there is no CVE yet (helps agents and UIs)."""
+    if not body.get("ok"):
+        return body
+    flaw = body.get("flaw")
+    if not isinstance(flaw, dict) or _flaw_has_usable_cve_id(flaw):
+        return body
+    uid = flaw.get("uuid")
+    if uid:
+        body["osidb_flaw_uuid"] = uid
+    return body
+
+
+def _attach_flaw_list_identity_hint(body: dict[str, Any]) -> dict[str, Any]:
+    if body.get("ok"):
+        body["identifier_hint"] = _FLAW_LIST_IDENTITY_HINT
+    return body
+
+
+def _parse_uuid_param(name: str, value: str) -> UUID:
+    try:
+        return UUID(str(value).strip())
+    except ValueError as e:
+        raise ValueError(f"{name} must be a UUID string") from e
 
 
 def _parse_dt(value: str | None) -> datetime.datetime | None:
@@ -120,7 +159,9 @@ def flaw_get(
         flaw = get_session().flaws.retrieve(
             flaw_id, api_version=api_version, **kw
         )
-        return {"ok": True, "flaw": to_jsonable(flaw)}
+        return _envelope_osidb_flaw_uuid_when_no_cve(
+            {"ok": True, "flaw": to_jsonable(flaw)}
+        )
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -294,10 +335,12 @@ def flaws_list(
             api_version=api_version,
             **merged,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return _attach_flaw_list_identity_hint(
+            {
+                "ok": True,
+                **paginated_summary(resp, limit=lim, offset=off),
+            }
+        )
     except (requests.RequestException, ValueError) as e:
         if isinstance(e, ValueError):
             return {"ok": False, "error": "bad_request", "detail": str(e)}
@@ -387,10 +430,12 @@ def flaws_search(
             api_version=api_version,
             limit=lim,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=0),
-        }
+        return _attach_flaw_list_identity_hint(
+            {
+                "ok": True,
+                **paginated_summary(resp, limit=lim, offset=0),
+            }
+        )
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -421,6 +466,8 @@ def affects_list(
     ps_update_stream_in: list[str] | None = None,
     flaw_cve_id: str | None = None,
     flaw_cve_id_in: list[str] | None = None,
+    flaw_uuid: str | None = None,
+    flaw_uuid_in: list[str] | None = None,
     flaw_workflow_state: list[str] | None = None,
     flaw_workflow_state_in: list[str] | None = None,
     flaw_impact: str | None = None,
@@ -455,6 +502,12 @@ def affects_list(
             kw["flaw__cve_id"] = flaw_cve_id
         if flaw_cve_id_in:
             kw["flaw__cve_id__in"] = flaw_cve_id_in
+        if flaw_uuid:
+            kw["flaw__uuid"] = _parse_uuid_param("flaw_uuid", flaw_uuid)
+        if flaw_uuid_in:
+            kw["flaw__uuid__in"] = [
+                _parse_uuid_param("flaw_uuid_in", u) for u in flaw_uuid_in
+            ]
         if flaw_workflow_state:
             kw["flaw__workflow_state"] = _affects_workflow_in(flaw_workflow_state)
         if flaw_workflow_state_in:
@@ -521,6 +574,8 @@ def trackers_list(
     *,
     affects_flaw_cve_id: str | None = None,
     affects_flaw_cve_id_in: list[str] | None = None,
+    affects_flaw_uuid: str | None = None,
+    affects_flaw_uuid_in: list[str] | None = None,
     affects_ps_module_in: list[str] | None = None,
     affects_ps_component_in: list[str] | None = None,
     tracker_type: str | None = None,
@@ -543,6 +598,15 @@ def trackers_list(
             kw["affects__flaw__cve_id"] = affects_flaw_cve_id
         if affects_flaw_cve_id_in:
             kw["affects__flaw__cve_id__in"] = affects_flaw_cve_id_in
+        if affects_flaw_uuid:
+            kw["affects__flaw__uuid"] = _parse_uuid_param(
+                "affects_flaw_uuid", affects_flaw_uuid
+            )
+        if affects_flaw_uuid_in:
+            kw["affects__flaw__uuid__in"] = [
+                _parse_uuid_param("affects_flaw_uuid_in", u)
+                for u in affects_flaw_uuid_in
+            ]
         if affects_ps_module_in:
             kw["affects__ps_module__in"] = affects_ps_module_in
         if affects_ps_component_in:
@@ -726,13 +790,6 @@ def search_flaws(
     )
 
 
-def _cve_key_from_flaw_payload(flaw: dict[str, Any], flaw_id: str) -> str:
-    cve = flaw.get("cve_id")
-    if isinstance(cve, str) and cve.strip():
-        return cve.strip()
-    return flaw_id
-
-
 def get_flaw_details(
     flaw_id: str,
     *,
@@ -744,7 +801,8 @@ def get_flaw_details(
 ) -> dict[str, Any]:
     """
     Full flaw record plus affected products (affects) and Jira/Bugzilla-style trackers
-    for the same CVE / flaw id (up to per-section limits).
+    for the same flaw id (CVE string or internal ``uuid``), up to per-section limits.
+    When the flaw has no ``cve_id`` yet, affects/trackers are scoped by ``flaw__uuid``.
     """
     base = flaw_get(flaw_id, api_version=api_version)
     if not base.get("ok"):
@@ -752,7 +810,6 @@ def get_flaw_details(
     flaw = base.get("flaw")
     if not isinstance(flaw, dict):
         flaw = {}
-    cve_key = _cve_key_from_flaw_payload(flaw, flaw_id)
 
     out: dict[str, Any] = {
         "ok": True,
@@ -763,22 +820,56 @@ def get_flaw_details(
     lim_a = clamp_limit(affects_limit)
     lim_t = clamp_limit(trackers_limit)
 
-    if include_affects:
-        out["affects"] = affects_list(
-            flaw_cve_id=cve_key,
-            limit=lim_a,
-            offset=0,
-            api_version=api_version,
-        )
-    if include_trackers:
-        out["trackers"] = trackers_list(
-            affects_flaw_cve_id=cve_key,
-            limit=lim_t,
-            offset=0,
-            api_version=api_version,
-        )
+    err_no_scope: dict[str, Any] = {
+        "ok": False,
+        "error": "no_cve_no_uuid",
+        "detail": (
+            "Cannot load affects/trackers: flaw has no cve_id and no uuid in the payload "
+            "(pass flaw_id as the OSIDB uuid if needed)."
+        ),
+    }
 
-    return out
+    if _flaw_has_usable_cve_id(flaw):
+        cve_key = str(flaw.get("cve_id", "")).strip()
+        if include_affects:
+            out["affects"] = affects_list(
+                flaw_cve_id=cve_key,
+                limit=lim_a,
+                offset=0,
+                api_version=api_version,
+            )
+        if include_trackers:
+            out["trackers"] = trackers_list(
+                affects_flaw_cve_id=cve_key,
+                limit=lim_t,
+                offset=0,
+                api_version=api_version,
+            )
+    else:
+        uid = flaw.get("uuid")
+        uid_s = uid.strip() if isinstance(uid, str) else ""
+        if not uid_s:
+            if include_affects:
+                out["affects"] = err_no_scope
+            if include_trackers:
+                out["trackers"] = err_no_scope
+        else:
+            if include_affects:
+                out["affects"] = affects_list(
+                    flaw_uuid=uid_s,
+                    limit=lim_a,
+                    offset=0,
+                    api_version=api_version,
+                )
+            if include_trackers:
+                out["trackers"] = trackers_list(
+                    affects_flaw_uuid=uid_s,
+                    limit=lim_t,
+                    offset=0,
+                    api_version=api_version,
+                )
+
+    return _envelope_osidb_flaw_uuid_when_no_cve(out)
 
 
 def get_cve_summary(
@@ -888,6 +979,8 @@ def query_affects(
     *,
     flaw_cve_id: str | None = None,
     flaw_cve_id_in: list[str] | None = None,
+    flaw_uuid: str | None = None,
+    flaw_uuid_in: list[str] | None = None,
     ps_module_in: list[str] | None = None,
     ps_component_in: list[str] | None = None,
     limit: int = DEFAULT_LIST_LIMIT,
@@ -899,6 +992,8 @@ def query_affects(
     return affects_list(
         flaw_cve_id=flaw_cve_id,
         flaw_cve_id_in=flaw_cve_id_in,
+        flaw_uuid=flaw_uuid,
+        flaw_uuid_in=flaw_uuid_in,
         ps_module_in=ps_module_in,
         ps_component_in=ps_component_in,
         limit=limit,
