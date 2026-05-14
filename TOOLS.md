@@ -1,6 +1,6 @@
 # osidb-mcp — Tools reference
 
-This document describes each MCP tool exposed by **osidb-mcp**: what it is for, how analysts or agents usually invoke it (natural-language style), and important limitations. Install, environment variables, and Kerberos/basic auth are covered in [README.md](README.md).
+This document describes each MCP tool exposed by **osidb-mcp**: what it is for, how analysts or agents usually invoke it (natural-language style), and important limitations. Install, environment variables, and Kerberos/basic auth are covered in [README.md](README.md). Source code lives at [github.com/vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp).
 
 ## Shared behaviour (read this once)
 

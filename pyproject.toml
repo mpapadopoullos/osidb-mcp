@@ -35,8 +35,9 @@ dev = ["pytest>=8.0", "pip-audit>=2.7"]
 osidb-mcp = "osidb_mcp.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/RedHatProductSecurity/osidb"
-Repository = "https://github.com/RedHatProductSecurity/osidb-bindings"
+Homepage = "https://github.com/vdanen/osidb-mcp"
+Repository = "https://github.com/vdanen/osidb-mcp"
+Issues = "https://github.com/vdanen/osidb-mcp/issues"
 
 [tool.hatch.build.targets.sdist]
 include = ["src/osidb_mcp", "README.md", "LICENSE", "CHANGELOG.md"]
