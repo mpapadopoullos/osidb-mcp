@@ -9,10 +9,10 @@ from typing import Literal
 
 
 class AccessMode(str, Enum):
-    """Server capability gate: only ``readwrite`` may register mutation tools (future)."""
+    """Server capability gate. Only ``readonly`` is supported until mutation MCP tools ship."""
 
     readonly = "readonly"
-    readwrite = "readwrite"
+    readwrite = "readwrite"  # reserved; rejected by `_parse_access_mode` until implemented
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -27,10 +27,14 @@ def _parse_access_mode() -> AccessMode:
     if raw == "readonly":
         return AccessMode.readonly
     if raw == "readwrite":
-        return AccessMode.readwrite
+        raise ValueError(
+            "OSIDB_MCP_ACCESS_MODE=readwrite is not supported yet (no mutation MCP tools). "
+            "Use 'readonly'. When write tools are added, configure a dedicated MCP server entry "
+            "for intentional mutations."
+        )
     raise ValueError(
-        "OSIDB_MCP_ACCESS_MODE must be 'readonly' or 'readwrite', "
-        f"got {raw!r}"
+        "OSIDB_MCP_ACCESS_MODE must be 'readonly' (default). "
+        f"Got {raw!r}"
     )
 
 

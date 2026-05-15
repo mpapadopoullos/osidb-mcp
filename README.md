@@ -28,7 +28,7 @@ osidb-mcp --version
 | `OSIDB_USERNAME` / `OSIDB_PASSWORD` | for `basic` | Basic auth for token obtain |
 | `OSIDB_VERIFY_SSL` | no | `true` (default) or `false` (prefer `REQUESTS_CA_BUNDLE` for custom CAs) |
 | `OSIDB_USER_AGENT` | no | Optional extra User-Agent suffix |
-| `OSIDB_MCP_ACCESS_MODE` | no | `readonly` (default) or `readwrite` (mutations reserved for a future release) |
+| `OSIDB_MCP_ACCESS_MODE` | no | **`readonly` only** (default). **`readwrite` is rejected at startup** until mutation tools exist. |
 
 Kerberos: the process must have a valid ticket (`kinit`) for the OSIDB HTTP service.
 
@@ -72,6 +72,13 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 | `flaw_comments_list` | Paginated **discussion comments** for a flaw id. |
 | `flaw_references_list` | Paginated **external references** (URLs, advisory refs, etc.) for a flaw id. |
 | `flaw_cvss_scores_list` | Paginated **CVSS score** rows (issuer/version/vector) for a flaw id. |
+| `flaw_acknowledgments_list` | Paginated **acknowledgments** for a flaw id (CVE or `uuid`). |
+| `flaw_labels_list` | Paginated flaw **collaborator labels** for a flaw id. |
+| `flaw_package_versions_list` | Paginated **package version** rows for a flaw id. |
+| `affect_get` | Single **affect** by OSIDB uuid; optional field projection and `include_history`. |
+| `tracker_get` | Single **tracker filing** by uuid; optional field projection / `include_meta_attr`. |
+| `labels_list` | Paginated **global** OSIDB labels (`GET /labels`); optional allowlisted `extra_query`. |
+| `affect_cvss_scores_list` | Paginated **CVSS** rows for one affect (by affect uuid); optional allowlisted `extra_query`. |
 | `search_component` | Flaws whose flaw-level **components** intersect `components_in` (v2 flaws list); optional impact/workflow/date filters. |
 | `query_affects` | **Affect rows** by CVE (`flaw_cve_id` / `flaw_cve_id_in`) and/or flaw UUID (`flaw_uuid` / `flaw_uuid_in`); wrapper over `affects_list`. |
 | `get_pending_exploit_actions` | **[EXPERIMENTAL]** `GET /exploits/api/v1|v2/report/pending` — pending exploit / IR actions; may 404 if exploits app is off. |
@@ -92,7 +99,7 @@ OSIDB flaws always have an internal **`uuid`**. A **`cve_id`** may be missing un
 - **`flaw_get`** / **`get_flaw_details`**: when there is no usable CVE string, the tool adds top-level **`osidb_flaw_uuid`** (same value as `flaw.uuid`) so follow-up calls are obvious.
 - **`get_flaw_details`**: if `cve_id` is empty, affects and trackers are loaded using **`flaw__uuid`** / **`affects__flaw__uuid`** automatically.
 - **`affects_list`** / **`query_affects`**: use **`flaw_uuid`** / **`flaw_uuid_in`** to scope rows when there is no CVE. **`trackers_list`**: use **`affects_flaw_uuid`** / **`affects_flaw_uuid_in`**.
-- **`flaw_comments_list`**, **`flaw_references_list`**, **`flaw_cvss_scores_list`**: the `flaw_id` argument is the same as for **`flaw_get`** — CVE string **or** internal **`uuid`**. If you use **`include_fields`** on **`flaw_get`**, include **`uuid`** when you still need it downstream.
+- **`flaw_comments_list`**, **`flaw_references_list`**, **`flaw_cvss_scores_list`**, **`flaw_acknowledgments_list`**, **`flaw_labels_list`**, **`flaw_package_versions_list`**: the `flaw_id` argument is the same as for **`flaw_get`** — CVE string **or** internal **`uuid`**. If you use **`include_fields`** on **`flaw_get`**, include **`uuid`** when you still need it downstream.
 
 ## Analyst examples
 
@@ -112,8 +119,10 @@ These tools return **structured JSON** (sometimes large). The **MCP host** (Curs
 
 ## Security
 
-- Outputs may include **embargoed** content; treat transcripts and logs according to your data classification policy.
-- Prefer `readonly` (default). `readwrite` does not enable mutations yet but is reserved for explicit future write tools.
+See **[SECURITY.md](SECURITY.md)** for the threat model, OWASP-oriented checklist, and access-mode behavior.
+
+- Outputs may include **embargoed** content; treat transcripts and logs according to your data classification policy (especially when using hosted LLMs).
+- **`OSIDB_MCP_ACCESS_MODE=readonly`** is the only supported value today — **`readwrite` exits at startup**. When mutation tools exist later, use **two MCP entries** (readonly vs write-capable) so writes happen only when you intend them.
 - Never commit `OSIDB_PASSWORD`; use IDE env or secret stores.
 
 ## Development

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- **Access mode:** `OSIDB_MCP_ACCESS_MODE` supports only `readonly` (default). `readwrite` is **rejected at startup** with a clear error until mutation MCP tools exist; removes misleading “warn and continue” behavior.
+- **New read tools:** `flaw_acknowledgments_list`, `flaw_labels_list`, `flaw_package_versions_list` (flaw-scoped lists); `affect_get`, `tracker_get` (single resource by id); `labels_list` (global OSIDB labels); `affect_cvss_scores_list` (per-affect CVSS rows).
+- **Security documentation:** add [SECURITY.md](SECURITY.md) — threat model, OWASP-oriented checklist, dual-MCP recommendation for future read/write servers.
+- **Docs:** README / TOOLS.md updated for new tools and `readonly`-only access mode.
+- **Tests:** config/access-mode regression test for rejected `readwrite`.
+
 ## 0.1.4
 
 - **Flaw identity without CVE:** `flaw_get` adds top-level `osidb_flaw_uuid` when `cve_id` is empty; `flaws_list` / `flaws_search` add `identifier_hint` for agents; MCP server instructions document CVE vs `uuid`.
@@ -22,4 +30,4 @@
 
 ## 0.1.0
 
-- Initial release: stdio MCP server, `readonly` / `readwrite` access mode (read tools only; mutations reserved for a later release), OSIDB session via `osidb-bindings` (Kerberos or basic auth).
+- Initial release: stdio MCP server, `readonly` access mode (OSIDB session via `osidb-bindings`, Kerberos or basic auth). `readwrite` was later rejected at startup until mutation tools exist.

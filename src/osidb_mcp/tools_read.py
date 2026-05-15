@@ -43,8 +43,10 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workfl
 from osidb_mcp.errors import http_error_payload
 from osidb_mcp.query_filters import (
     AFFECTS_EXTRA_KEYS,
+    AFFECT_CVSS_SCORES_EXTRA_KEYS,
     DEFAULT_LIST_LIMIT,
     FLAWS_EXTRA_KEYS,
+    LABELS_EXTRA_KEYS,
     clamp_limit,
     clamp_offset,
     merge_extra_query,
@@ -704,6 +706,191 @@ def flaw_cvss_scores_list(
             **paginated_summary(resp, limit=lim, offset=off),
         }
     except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_acknowledgments_list(
+    flaw_id: str,
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    lim = clamp_limit(limit)
+    off = clamp_offset(offset)
+    try:
+        resp = get_session().flaws.acknowledgments.retrieve_list(
+            flaw_id,
+            api_version=api_version,
+            limit=lim,
+            offset=off,
+        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=off),
+        }
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_labels_list(
+    flaw_id: str,
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    lim = clamp_limit(limit)
+    off = clamp_offset(offset)
+    try:
+        resp = get_session().flaws.labels.retrieve_list(
+            flaw_id,
+            api_version=api_version,
+            limit=lim,
+            offset=off,
+        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=off),
+        }
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_package_versions_list(
+    flaw_id: str,
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    lim = clamp_limit(limit)
+    off = clamp_offset(offset)
+    try:
+        resp = get_session().flaws.package_versions.retrieve_list(
+            flaw_id,
+            api_version=api_version,
+            limit=lim,
+            offset=off,
+        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=off),
+        }
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def affect_get(
+    affect_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    include_history: bool | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        aid = _parse_uuid_param("affect_id", affect_id)
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        if include_history is not None:
+            kw["include_history"] = include_history
+        affect = get_session().affects.retrieve(aid, api_version=api_version, **kw)
+        return {"ok": True, "affect": to_jsonable(affect)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+
+def tracker_get(
+    tracker_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    include_meta_attr: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        tid = _parse_uuid_param("tracker_id", tracker_id)
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        if include_meta_attr:
+            kw["include_meta_attr"] = include_meta_attr
+        tracker = get_session().trackers.retrieve(tid, api_version=api_version, **kw)
+        return {"ok": True, "tracker": to_jsonable(tracker)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+
+def labels_list(
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+    api_version: str | None = None,
+    extra_query: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    lim = clamp_limit(limit)
+    off = clamp_offset(offset)
+    try:
+        base: dict[str, Any] = {"limit": lim, "offset": off}
+        merged = merge_extra_query(base, extra_query, allowlist=LABELS_EXTRA_KEYS)
+        resp = get_session().labels.retrieve_list(
+            api_version=api_version,
+            **merged,
+        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=off),
+        }
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+def affect_cvss_scores_list(
+    affect_id: str,
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+    extra_query: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    lim = clamp_limit(limit)
+    off = clamp_offset(offset)
+    try:
+        aid = _parse_uuid_param("affect_id", affect_id)
+        kw: dict[str, Any] = {"limit": lim, "offset": off}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        merged = merge_extra_query(
+            kw, extra_query, allowlist=AFFECT_CVSS_SCORES_EXTRA_KEYS
+        )
+        resp = get_session().affects.cvss_scores.retrieve_list(
+            aid,
+            api_version=api_version,
+            **merged,
+        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=off),
+        }
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
         return {"ok": False, **http_error_payload(e)}
 
 

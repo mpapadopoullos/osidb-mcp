@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 from osidb_bindings.bindings.python_client.api.osidb import (
@@ -9,8 +10,17 @@ from osidb_bindings.bindings.python_client.api.osidb import (
     osidb_api_v2_flaws_list,
 )
 
+_labels_list_mod = importlib.import_module(
+    "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_labels_list"
+)
+_affect_cvss_list_mod = importlib.import_module(
+    "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_affects_cvss_scores_list"
+)
+
 FLAWS_EXTRA_KEYS = frozenset(osidb_api_v2_flaws_list.QUERY_PARAMS.keys())
 AFFECTS_EXTRA_KEYS = frozenset(osidb_api_v2_affects_list.QUERY_PARAMS.keys())
+LABELS_EXTRA_KEYS = frozenset(_labels_list_mod.QUERY_PARAMS.keys())
+AFFECT_CVSS_SCORES_EXTRA_KEYS = frozenset(_affect_cvss_list_mod.QUERY_PARAMS.keys())
 
 EXTRAS_MAX_KEYS = 30
 EXTRAS_MAX_LIST_LEN = 100

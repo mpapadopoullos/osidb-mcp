@@ -11,6 +11,7 @@ This document describes each MCP tool exposed by **osidb-mcp**: what it is for, 
 - **`api_version`:** Optional string forwarded to bindings when you need a non-default OSIDB API version; leave unset for typical v2 behaviour.
 - **Errors:** On failure, tools return JSON with `"ok": false` plus `error` / `detail` / `status_code` fields where applicable, rather than throwing inside the MCP layer.
 - **CVE vs `uuid`:** Every flaw has a stable internal **`uuid`** in OSIDB. **`cve_id`** may be empty until assigned. Use **`uuid`** as `flaw_id` for retrieve/subresource tools when there is no CVE; use **`flaw_uuid`** / **`affects_flaw_uuid`** on list APIs. **`flaws_list`** / **`flaws_search`** responses include **`identifier_hint`**; **`flaw_get`** / **`get_flaw_details`** may add **`osidb_flaw_uuid`** when there is no CVE. Omitting **`uuid`** from **`include_fields`** hides it from the payload.
+- **Access mode:** Only **`OSIDB_MCP_ACCESS_MODE=readonly`** is accepted (`readwrite` exits at startup). See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -292,6 +293,40 @@ Q: "Show CVSS vectors stored on this flaw"
 
 ---
 
+## Supplementary read tools
+
+Additional lists and single-record reads registered after **`flaw_cvss_scores_list`** in [`server.py`](src/osidb_mcp/server.py).
+
+### `flaw_acknowledgments_list`
+
+Paginated acknowledgments for a **`flaw_id`** (CVE or uuid). Same **`limit`** / **`offset`** / **`api_version`** pattern as **`flaw_comments_list`**.
+
+### `flaw_labels_list`
+
+Paginated collaborator **labels** on a flaw.
+
+### `flaw_package_versions_list`
+
+Paginated package-version rows attached to a flaw.
+
+### `affect_get`
+
+Single affect record by **OSIDB affect uuid** (`affect_id`). Optional **`include_fields`**, **`exclude_fields`**, **`include_history`**.
+
+### `tracker_get`
+
+Single tracker filing by **uuid** (`tracker_id`). Optional **`include_fields`**, **`exclude_fields`**, **`include_meta_attr`**.
+
+### `labels_list`
+
+Paginated **global** labels (`GET …/labels`). **`extra_query`** keys are allowlisted from the bindings labels list endpoint (typically **`limit`** / **`offset`** only).
+
+### `affect_cvss_scores_list`
+
+Paginated CVSS score rows for one affect (**affect uuid**). Supports optional **`extra_query`** allowlisted from the v2 affects CVSS list endpoint.
+
+---
+
 ## 15. `search_component`
 
 **Purpose:** Find flaws whose **flaw-level** `components` field intersects a list of names — implemented as `flaws_list` with `components_in`.
@@ -360,7 +395,10 @@ Q: "Fetch the v1 pending exploit report"
 | Exact OpenAPI / rare filters | `flaws_list` + allowlisted `extra_query` |
 | Product or update stream lens | `affects_list`, `query_affects` |
 | Filing / engineering trackers | `trackers_list` |
-| Comments, refs, CVSS only | `flaw_*_list` tools |
+| Comments, refs, CVSS, acknowledgments, labels, package versions | `flaw_*_list` tools |
+| One affect or tracker by uuid | `affect_get`, `tracker_get` |
+| Global label catalog | `labels_list` |
+| CVSS rows per affect | `affect_cvss_scores_list` |
 | Health / identity | `osidb_status`, `osidb_whoami` |
 
 For configuration snippets (Cursor, Claude, env vars), see [README.md](README.md).

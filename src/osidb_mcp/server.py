@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import logging
-
 from mcp.server.fastmcp import FastMCP
 
-from osidb_mcp.config import AccessMode, Settings
+from osidb_mcp.config import Settings
 from osidb_mcp import tools_read
 
-logger = logging.getLogger(__name__)
 
 _INSTRUCTIONS = """\
 This server exposes read-only OSIDB operations (flaws/CVEs, affects, trackers, comments, references, CVSS) \
@@ -22,12 +19,12 @@ for affects and trackers (see tool descriptions).
 Use high-level tools ``search_flaws``, ``get_flaw_details``, and ``get_cve_summary`` for triage-style search and rollups; \
 use lower-level ``flaws_list`` / ``flaws_count`` when you need full filter control.
 
-Access mode is controlled only by the ``OSIDB_MCP_ACCESS_MODE`` environment variable (``readonly`` default; \
-``readwrite`` reserved for future mutation tools).
+Only ``OSIDB_MCP_ACCESS_MODE=readonly`` is supported (default). ``readwrite`` is rejected at startup until mutation tools exist.
 """
 
 
 def create_server(settings: Settings) -> FastMCP:
+    _ = settings  # reserved for future readwrite / mutation registration gates
     mcp = FastMCP("osidb-mcp", instructions=_INSTRUCTIONS)
 
     mcp.tool(name="osidb_status", description="OSIDB API health / status payload.")(
@@ -116,6 +113,43 @@ def create_server(settings: Settings) -> FastMCP:
         description="Paginated CVSS score rows for a flaw id.",
     )(tools_read.flaw_cvss_scores_list)
     mcp.tool(
+        name="flaw_acknowledgments_list",
+        description="Paginated acknowledgments for a flaw id (CVE or uuid).",
+    )(tools_read.flaw_acknowledgments_list)
+    mcp.tool(
+        name="flaw_labels_list",
+        description="Paginated collaborator labels for a flaw id.",
+    )(tools_read.flaw_labels_list)
+    mcp.tool(
+        name="flaw_package_versions_list",
+        description="Paginated package version rows for a flaw id.",
+    )(tools_read.flaw_package_versions_list)
+    mcp.tool(
+        name="affect_get",
+        description=(
+            "Retrieve one affect by OSIDB uuid; optional ``include_fields`` / ``exclude_fields`` "
+            "and ``include_history``."
+        ),
+    )(tools_read.affect_get)
+    mcp.tool(
+        name="tracker_get",
+        description=(
+            "Retrieve one tracker filing by uuid; optional ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.tracker_get)
+    mcp.tool(
+        name="labels_list",
+        description=(
+            "Paginated global OSIDB labels (``GET /labels``). ``extra_query`` allowlisted (typically ``limit``/``offset``)."
+        ),
+    )(tools_read.labels_list)
+    mcp.tool(
+        name="affect_cvss_scores_list",
+        description=(
+            "Paginated CVSS score rows for one affect (by affect uuid). Optional allowlisted ``extra_query``."
+        ),
+    )(tools_read.affect_cvss_scores_list)
+    mcp.tool(
         name="search_component",
         description=(
             "Find flaws touching flaw-level ``components`` values (``components_in``). "
@@ -135,11 +169,5 @@ def create_server(settings: Settings) -> FastMCP:
             "May fail if the exploits integration is not enabled on this OSIDB instance."
         ),
     )(tools_read.get_pending_exploit_actions)
-
-    if settings.access_mode == AccessMode.readwrite:
-        logger.warning(
-            "readwrite mode requested: mutation tools are not implemented in this release; "
-            "only read tools are registered."
-        )
 
     return mcp

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from osidb_mcp.config import AccessMode, load_settings
+from osidb_mcp.config import load_settings
 from osidb_mcp.server import create_server
 from osidb_mcp.session_holder import configure
 
@@ -32,13 +32,7 @@ def main() -> None:
 
     configure(settings)
 
-    if settings.access_mode == AccessMode.readwrite:
-        log.warning(
-            "OSIDB_MCP_ACCESS_MODE=readwrite — mutation MCP tools are not implemented yet; "
-            "only read tools are registered."
-        )
-    else:
-        log.info("osidb-mcp access mode: readonly")
+    log.info("osidb-mcp access mode: readonly")
 
     mcp = create_server(settings)
     mcp.run(transport="stdio")

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "osidb-mcp"
-version = "0.1.4"
+version = "0.2.0"
 description = "Model Context Protocol (MCP) server for OSIDB using osidb-bindings"
 readme = "README.md"
 license = "MIT"
@@ -41,7 +41,7 @@ Issues = "https://github.com/vdanen/osidb-mcp/issues"
 PyPI = "https://pypi.org/project/osidb-mcp/"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/osidb_mcp", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["src/osidb_mcp", "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
