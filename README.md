@@ -1,8 +1,19 @@
 # osidb-mcp
 
-Python [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [OSIDB](https://github.com/RedHatProductSecurity/osidb), built on [`osidb-bindings`](https://github.com/RedHatProductSecurity/osidb-bindings) from PyPI. Use it from Cursor, Claude Desktop, or any MCP client over **stdio**. **PyPI:** [pypi.org/project/osidb-mcp](https://pypi.org/project/osidb-mcp/) · **Source:** [github.com/vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp).
+Python [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [OSIDB](https://github.com/RedHatProductSecurity/osidb), built on [`osidb-bindings`](https://github.com/RedHatProductSecurity/osidb-bindings) from PyPI. Use it from Cursor, Claude Desktop, or any MCP client over **stdio**. **PyPI:** [pypi.org/project/osidb-mcp](https://pypi.org/project/osidb-mcp/) · **Homebrew:** [vdanen/osidb-mcp](https://github.com/vdanen/homebrew-osidb-mcp) · **Source:** [github.com/vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp).
 
 ## Install
+
+### Homebrew
+
+```bash
+brew tap vdanen/osidb-mcp
+brew install osidb-mcp
+```
+
+After the tap is installed, upgrades use `brew upgrade osidb-mcp`.
+
+### PyPI
 
 Published on PyPI as [`osidb-mcp`](https://pypi.org/project/osidb-mcp/):
 

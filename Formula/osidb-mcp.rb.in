@@ -1,0 +1,25 @@
+class OsidbMcp < Formula
+  desc "Model Context Protocol (MCP) server for OSIDB"
+  homepage "https://github.com/vdanen/osidb-mcp"
+  url "@@URL@@"
+  sha256 "@@SHA256@@"
+  license "MIT"
+
+  depends_on "python@3.13"
+
+  skip_clean "libexec"
+
+  def install
+    python3 = Formula["python@3.13"].opt_bin/"python3.13"
+    system python3, "-m", "venv", "--clear", libexec
+    ENV.delete("PIP_NO_BINARY")
+    ENV.delete("PIP_REQUIRE_HASHES")
+    system libexec/"bin/pip", "install", "--upgrade", "pip"
+    system libexec/"bin/pip", "install", "."
+    bin.install_symlink libexec/"bin/osidb-mcp"
+  end
+
+  test do
+    assert_match %r{\A\d+\.\d+\.\d+\n\z}, shell_output("#{bin}/osidb-mcp --version")
+  end
+end

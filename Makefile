@@ -8,7 +8,7 @@ PIP          := $(PYTHON) -m pip
 PYTEST_ARGS  ?=
 TWINE        := $(PYTHON) -m twine
 
-.PHONY: help install sync test livetest test-uv audit check build clean upload version
+.PHONY: help install sync test livetest test-uv audit check build clean upload version brew
 
 help:
 	@echo "osidb-mcp — common targets"
@@ -61,3 +61,17 @@ upload: build
 
 version:
 	@$(PYTHON) -m osidb_mcp --version
+
+
+brew: ## Generate Homebrew formula (requires package on PyPI)
+	@mkdir -p Formula
+	@VERSION=$$(grep '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/') && \
+	read -r URL SHA <<< "$$(curl -sfL "https://pypi.org/pypi/osidb-mcp/$$VERSION/json" | \
+		python3 -c "import json,sys;d=json.load(sys.stdin);u=next(x for x in d['urls'] if x['filename'].endswith('.tar.gz'));print(u['url'], u['digests']['sha256'])")" || \
+	{ echo "Error: osidb-mcp $$VERSION not found on PyPI. Run 'make upload' first." >&2; exit 1; } && \
+	sed -e "s|@@URL@@|$$URL|g" -e "s|@@SHA256@@|$$SHA|g" \
+		Formula/osidb-mcp.rb.in > Formula/osidb-mcp.rb && \
+	echo "==> Formula/osidb-mcp.rb (version $$VERSION)" && \
+	echo "    Install locally:  brew install --formula Formula/osidb-mcp.rb" && \
+	echo "    For a tap: copy Formula/osidb-mcp.rb to your homebrew-tap repo"
+	rsync -avz Formula/osidb-mcp.rb ../homebrew-osidb-mcp/Formula/osidb-mcp.rb
