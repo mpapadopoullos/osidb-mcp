@@ -32,7 +32,7 @@ def main() -> None:
 
     configure(settings)
 
-    log.info("osidb-mcp access mode: readonly")
+    log.info("osidb-mcp access mode: %s", settings.access_mode.value)
 
     mcp = create_server(settings)
     mcp.run(transport="stdio")

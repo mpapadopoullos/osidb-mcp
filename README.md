@@ -1,33 +1,13 @@
 # osidb-mcp
 
-Python [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [OSIDB](https://github.com/RedHatProductSecurity/osidb), built on [`osidb-bindings`](https://github.com/RedHatProductSecurity/osidb-bindings) from PyPI. Use it from Cursor, Claude Desktop, or any MCP client over **stdio**. **PyPI:** [pypi.org/project/osidb-mcp](https://pypi.org/project/osidb-mcp/) · **Homebrew:** [vdanen/osidb-mcp](https://github.com/vdanen/homebrew-osidb-mcp) · **Source:** [github.com/vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp).
+Python [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [OSIDB](https://github.com/RedHatProductSecurity/osidb), built on [`osidb-bindings`](https://github.com/RedHatProductSecurity/osidb-bindings). Use it from Cursor, Claude Desktop, or any MCP client over **stdio**. Forked from [vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp) with added **write/mutation tools**.
 
 ## Install
 
-### Homebrew
-
 ```bash
-brew tap vdanen/osidb-mcp
-brew install osidb-mcp
-```
-
-After the tap is installed, upgrades use `brew upgrade osidb-mcp`.
-
-### PyPI
-
-Published on PyPI as [`osidb-mcp`](https://pypi.org/project/osidb-mcp/):
-
-```bash
-pipx install osidb-mcp
+pip install -e .
 # or
-pip install osidb-mcp
-```
-
-Print the installed package version (no OSIDB env or credentials required):
-
-```bash
-osidb-mcp --version
-# or: osidb-mcp -V
+uv pip install -e .
 ```
 
 ## Configuration (environment)
@@ -39,7 +19,7 @@ osidb-mcp --version
 | `OSIDB_USERNAME` / `OSIDB_PASSWORD` | for `basic` | Basic auth for token obtain |
 | `OSIDB_VERIFY_SSL` | no | `true` (default) or `false` (prefer `REQUESTS_CA_BUNDLE` for custom CAs) |
 | `OSIDB_USER_AGENT` | no | Optional extra User-Agent suffix |
-| `OSIDB_MCP_ACCESS_MODE` | no | **`readonly` only** (default). **`readwrite` is rejected at startup** until mutation tools exist. |
+| `OSIDB_MCP_ACCESS_MODE` | no | `readonly` (default) or `readwrite`. Readwrite mode registers mutation tools (flaw create/update, affects, acknowledgments, references). |
 
 Kerberos: the process must have a valid ticket (`kinit`) for the OSIDB HTTP service.
 
@@ -63,9 +43,11 @@ Optional keys forwarded by bindings: `BUGZILLA_API_KEY`, `JIRA_ACCESS_TOKEN`, `J
 }
 ```
 
-## Tools (read-only)
+## Tools
 
-All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth). The CLI **`osidb-mcp --version` / `-V`** does not contact OSIDB (see [Install](#install)). The table lists every registered tool, in the same order as [`server.py`](src/osidb_mcp/server.py). For longer explanations, example prompts, and limitations, see **[TOOLS.md](TOOLS.md)**. If an **LLM agent** is calling these tools, read **[Using with AI agents](#using-with-ai-agents)** first.
+All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth). The table lists every registered tool, in the same order as [`server.py`](src/osidb_mcp/server.py). For longer explanations, example prompts, and limitations, see **[TOOLS.md](TOOLS.md)**. If an **LLM agent** is calling these tools, read **[Using with AI agents](#using-with-ai-agents)** first.
+
+### Read-only tools
 
 | Tool | Purpose |
 |------|---------|
@@ -95,6 +77,23 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 | `get_pending_exploit_actions` | **[EXPERIMENTAL]** `GET /exploits/api/v1|v2/report/pending` — pending exploit / IR actions; may 404 if exploits app is off. |
 
 `limit` (and analogous list limits) are capped at **100** per request unless noted otherwise on a tool.
+
+### Write tools (`readwrite` mode only)
+
+These tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`.
+
+| Tool | Purpose |
+|------|---------|
+| `flaw_create` | Create a new flaw with optional sub-resources (acknowledgments, references, CVSS scores) in a single composite operation. |
+| `flaw_update` | Update fields on an existing flaw. Auto-fetches `updated_dt` for optimistic concurrency. |
+| `affect_add` | Add one or more affects to a flaw. Auto-injects `flaw` UUID and `embargoed` from parent flaw. |
+| `affect_remove` | Remove one or more affects by UUID. |
+| `flaw_acknowledgment_add` | Add acknowledgment(s) to an existing flaw. |
+| `flaw_acknowledgment_remove` | Remove an acknowledgment from a flaw. |
+| `flaw_reference_add` | Add reference(s) to an existing flaw. |
+| `flaw_reference_remove` | Remove a reference from a flaw. |
+
+All write tools return `{"ok": true, ...}` on success. On partial failure (e.g. flaw created but a sub-resource failed), they return `{"ok": true, "partial": true, "errors": [...]}`.
 
 ### When to use which
 
@@ -133,7 +132,7 @@ These tools return **structured JSON** (sometimes large). The **MCP host** (Curs
 See **[SECURITY.md](SECURITY.md)** for the threat model, OWASP-oriented checklist, and access-mode behavior.
 
 - Outputs may include **embargoed** content; treat transcripts and logs according to your data classification policy (especially when using hosted LLMs).
-- **`OSIDB_MCP_ACCESS_MODE=readonly`** is the only supported value today — **`readwrite` exits at startup**. When mutation tools exist later, use **two MCP entries** (readonly vs write-capable) so writes happen only when you intend them.
+- Use **two MCP entries** (readonly vs readwrite) so mutations only happen when you intend them.
 - Never commit `OSIDB_PASSWORD`; use IDE env or secret stores.
 
 ## Development
@@ -146,7 +145,7 @@ pytest tests
 pip-audit
 ```
 
-With [Makefile](Makefile): `make install`, `make test`, `make audit`, or `make check` (CI-equivalent). `make build` / `make upload` for releases (`upload` requires [twine](https://twine.readthedocs.io/) credentials).
+With [Makefile](Makefile): `make install`, `make test`, `make audit`, or `make check` (CI-equivalent).
 
 **Live integration tests:** `make livetest` runs [`live_tests/`](live_tests/) with **`pytest -vv -s`** (verbose + uncaptured stderr) when `OSIDB_LIVE_TEST=1` and normal `OSIDB_*` credentials are set. Default assertions use **`CVE-2014-0160`**; optional **`OSIDB_LIVE_MIN_*`** env vars enforce minimum totals for your instance. Setup, count output, and `.gitignore` patterns for secrets are documented in **[live_tests/README.md](live_tests/README.md)**. Default **`make test`** / **`pytest`** only run **`tests/`** (offline).
 

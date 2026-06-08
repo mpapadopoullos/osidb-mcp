@@ -19,8 +19,15 @@ def test_readonly_explicit(monkeypatch):
     assert s.access_mode.value == "readonly"
 
 
-def test_readwrite_rejected(monkeypatch):
+def test_readwrite_accepted(monkeypatch):
     monkeypatch.setenv("OSIDB_BASE_URL", "https://osidb.example.com")
     monkeypatch.setenv("OSIDB_MCP_ACCESS_MODE", "readwrite")
-    with pytest.raises(ValueError, match="readwrite"):
+    s = load_settings()
+    assert s.access_mode.value == "readwrite"
+
+
+def test_invalid_mode_rejected(monkeypatch):
+    monkeypatch.setenv("OSIDB_BASE_URL", "https://osidb.example.com")
+    monkeypatch.setenv("OSIDB_MCP_ACCESS_MODE", "bogus")
+    with pytest.raises(ValueError, match="bogus"):
         load_settings()

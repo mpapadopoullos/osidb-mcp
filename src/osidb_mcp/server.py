@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from osidb_mcp.config import Settings
+from osidb_mcp.config import AccessMode, Settings
 from osidb_mcp import tools_read
 
 
-_INSTRUCTIONS = """\
+_READONLY_INSTRUCTIONS = """\
 This server exposes read-only OSIDB operations (flaws/CVEs, affects, trackers, comments, references, CVSS) \
 via official osidb-bindings. Responses may include embargoed data depending on your OSIDB account.
 
@@ -18,14 +18,19 @@ for affects and trackers (see tool descriptions).
 
 Use high-level tools ``search_flaws``, ``get_flaw_details``, and ``get_cve_summary`` for triage-style search and rollups; \
 use lower-level ``flaws_list`` / ``flaws_count`` when you need full filter control.
+"""
 
-Only ``OSIDB_MCP_ACCESS_MODE=readonly`` is supported (default). ``readwrite`` is rejected at startup until mutation tools exist.
+_READWRITE_INSTRUCTIONS = _READONLY_INSTRUCTIONS + """\
+
+This server is running in **readwrite** mode. Mutation tools (``flaw_create``) are available in addition to \
+all read-only tools. Write operations contact OSIDB and create real data; treat transcripts accordingly.
 """
 
 
 def create_server(settings: Settings) -> FastMCP:
-    _ = settings  # reserved for future readwrite / mutation registration gates
-    mcp = FastMCP("osidb-mcp", instructions=_INSTRUCTIONS)
+    is_readwrite = settings.access_mode == AccessMode.readwrite
+    instructions = _READWRITE_INSTRUCTIONS if is_readwrite else _READONLY_INSTRUCTIONS
+    mcp = FastMCP("osidb-mcp", instructions=instructions)
 
     mcp.tool(name="osidb_status", description="OSIDB API health / status payload.")(
         tools_read.osidb_status
@@ -169,5 +174,75 @@ def create_server(settings: Settings) -> FastMCP:
             "May fail if the exploits integration is not enabled on this OSIDB instance."
         ),
     )(tools_read.get_pending_exploit_actions)
+
+    if is_readwrite:
+        from osidb_mcp import tools_write
+
+        mcp.tool(
+            name="flaw_create",
+            description=(
+                "Create a new OSIDB flaw with optional sub-resources (acknowledgments, references, CVSS scores) "
+                "in a single composite operation. The flaw is created first via POST /osidb/api/v2/flaws, then "
+                "each sub-resource is created sequentially via v1 endpoints. Returns the flaw uuid and all "
+                "created sub-resource uuids. Supports partial-success reporting if the flaw was created but "
+                "a sub-resource call failed."
+            ),
+        )(tools_write.flaw_create)
+
+        mcp.tool(
+            name="flaw_update",
+            description=(
+                "Update fields on an existing OSIDB flaw (PUT /osidb/api/v2/flaws/{id}). "
+                "Auto-fetches the current flaw to obtain ``updated_dt`` for optimistic concurrency. "
+                "Only the fields you provide are changed; all others keep their current values."
+            ),
+        )(tools_write.flaw_update)
+
+        mcp.tool(
+            name="affect_add",
+            description=(
+                "Add one or more affects to an existing flaw (POST /osidb/api/v2/affects). "
+                "``flaw_id`` must be the internal UUID. Each affect needs at least ``ps_update_stream``."
+            ),
+        )(tools_write.affect_add)
+
+        mcp.tool(
+            name="affect_remove",
+            description=(
+                "Remove one or more affects by UUID (DELETE /osidb/api/v2/affects/{uuid})."
+            ),
+        )(tools_write.affect_remove)
+
+        mcp.tool(
+            name="flaw_acknowledgment_add",
+            description=(
+                "Add acknowledgment(s) to an existing flaw (POST /osidb/api/v1/flaws/{id}/acknowledgments). "
+                "Each acknowledgment needs at least ``name``."
+            ),
+        )(tools_write.flaw_acknowledgment_add)
+
+        mcp.tool(
+            name="flaw_acknowledgment_remove",
+            description=(
+                "Remove an acknowledgment from a flaw by UUID "
+                "(DELETE /osidb/api/v1/flaws/{id}/acknowledgments/{sub_id})."
+            ),
+        )(tools_write.flaw_acknowledgment_remove)
+
+        mcp.tool(
+            name="flaw_reference_add",
+            description=(
+                "Add reference(s) to an existing flaw (POST /osidb/api/v1/flaws/{id}/references). "
+                "Each reference needs at least ``url``."
+            ),
+        )(tools_write.flaw_reference_add)
+
+        mcp.tool(
+            name="flaw_reference_remove",
+            description=(
+                "Remove a reference from a flaw by UUID "
+                "(DELETE /osidb/api/v1/flaws/{id}/references/{sub_id})."
+            ),
+        )(tools_write.flaw_reference_remove)
 
     return mcp
