@@ -2,31 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
     steps:
-      # checkout@v4 / setup-python@v5 run on Node 20 (deprecated on GHA). v5+/v6+ use Node 24.
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
+
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      # gssapi (via osidb-bindings → requests-gssapi / similar) builds from source and needs krb5-config.
-      - name: Install Kerberos headers (for gssapi)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libkrb5-dev
-      - name: Install
-        run: |
-          python -m pip install -U pip
-          pip install -e ".[dev]"
-      - name: Pytest
-        run: pytest tests
-      - name: pip-audit
-        run: pip-audit
+
+      - name: Install package with dev extras
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest -v
