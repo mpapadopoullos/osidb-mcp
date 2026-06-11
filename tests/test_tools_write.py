@@ -250,88 +250,41 @@ def _mock_flaw_full(**overrides):
     return flaw
 
 
-@patch("osidb_mcp.tools_write.requests.put")
-@patch("osidb_mcp.tools_write.requests.get")
 @patch("osidb_mcp.tools_write.get_session")
-def test_flaw_update_single_field(mock_get_session: MagicMock, mock_get: MagicMock, mock_put: MagicMock) -> None:
-    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
-    client.base_url = "https://osidb.example.com"
-    client.get_headers.return_value = {"Authorization": "Bearer tok"}
-    client.verify_ssl = True
-    client.get_auth.return_value = None
-    client.get_timeout.return_value = 300.0
-
-    get_resp = MagicMock()
-    get_resp.json.return_value = {
-        "title": "Original title", "comment_zero": "desc", "embargoed": True,
-        "impact": "MODERATE", "components": ["kernel"], "cve_id": "CVE-2026-52719",
-        "cve_description": "", "statement": "", "cwe_id": "CWE-125",
-        "source": "RESEARCHER", "reported_dt": "2026-05-19T00:00:00Z",
-        "unembargo_dt": None, "mitigation": "", "owner": None,
-        "updated_dt": "2026-06-08T12:00:00Z",
-    }
-    get_resp.raise_for_status.return_value = None
-    mock_get.return_value = get_resp
-
-    put_resp = MagicMock()
-    put_resp.json.return_value = {"uuid": "aaa58a80-dd9c-43dd-ba19-61fa88a66714", "impact": "IMPORTANT"}
-    put_resp.raise_for_status.return_value = None
-    mock_put.return_value = put_resp
+def test_flaw_update_single_field(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = _mock_flaw_full()
+    session.flaws.retrieve.return_value = current
+    session.flaws.update.return_value = _mock_flaw_full(impact="IMPORTANT")
 
     result = flaw_update(flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714", impact="IMPORTANT")
 
     assert result["ok"] is True
-    mock_put.assert_called_once()
-    put_data = mock_put.call_args[1]["json"]
-    assert put_data["impact"] == "IMPORTANT"
-    assert put_data["title"] == "Original title"
-    assert put_data["updated_dt"] == "2026-06-08T12:00:00Z"
+    session.flaws.update.assert_called_once()
+    update_data = session.flaws.update.call_args[0][1]
+    assert update_data["impact"] == "IMPORTANT"
+    assert update_data["title"] == "Original title"
+    assert update_data["updated_dt"] == "2026-06-08T12:00:00Z"
 
 
-@patch("osidb_mcp.tools_write.requests.get")
 @patch("osidb_mcp.tools_write.get_session")
-def test_flaw_update_retrieve_fails(mock_get_session: MagicMock, mock_get: MagicMock) -> None:
-    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
-    client.base_url = "https://osidb.example.com"
-    client.get_headers.return_value = {}
-    client.verify_ssl = True
-    client.get_auth.return_value = None
-    client.get_timeout.return_value = 300.0
-
-    mock_get.side_effect = requests.ConnectionError("timeout")
+def test_flaw_update_retrieve_fails(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.side_effect = requests.ConnectionError("timeout")
 
     result = flaw_update(flaw_id="bad-uuid", title="New title")
 
     assert result["ok"] is False
 
 
-@patch("osidb_mcp.tools_write.requests.put")
-@patch("osidb_mcp.tools_write.requests.get")
 @patch("osidb_mcp.tools_write.get_session")
-def test_flaw_update_put_fails(mock_get_session: MagicMock, mock_get: MagicMock, mock_put: MagicMock) -> None:
-    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
-    client.base_url = "https://osidb.example.com"
-    client.get_headers.return_value = {"Authorization": "Bearer tok"}
-    client.verify_ssl = True
-    client.get_auth.return_value = None
-    client.get_timeout.return_value = 300.0
-
-    get_resp = MagicMock()
-    get_resp.json.return_value = {
-        "title": "Original", "comment_zero": "desc", "embargoed": True,
-        "impact": "MODERATE", "components": [], "cve_id": None,
-        "cve_description": None, "statement": "", "cwe_id": None,
-        "source": None, "reported_dt": None, "unembargo_dt": None,
-        "mitigation": None, "owner": None,
-        "updated_dt": "2026-06-08T12:00:00Z",
-    }
-    get_resp.raise_for_status.return_value = None
-    mock_get.return_value = get_resp
-
-    resp_409 = MagicMock()
-    resp_409.status_code = 409
-    resp_409.text = "Conflict"
-    mock_put.side_effect = requests.HTTPError(response=resp_409)
+def test_flaw_update_put_fails(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full()
+    resp = MagicMock()
+    resp.status_code = 409
+    resp.text = "Conflict"
+    session.flaws.update.side_effect = requests.HTTPError(response=resp)
 
     result = flaw_update(flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714", statement="New")
 

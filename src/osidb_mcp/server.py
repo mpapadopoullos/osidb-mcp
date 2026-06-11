@@ -196,7 +196,7 @@ def create_server(settings: Settings) -> FastMCP:
                 "Update fields on an existing OSIDB flaw (PUT /osidb/api/v2/flaws/{id}). "
                 "Auto-fetches the current flaw to obtain ``updated_dt`` for optimistic concurrency. "
                 "Only the fields you provide are changed; all others keep their current values. "
-                "Supports ``owner`` assignment (Jira username)."
+                "Supports ``owner`` assignment (Jira username for workflow prerequisites)."
             ),
         )(tools_write.flaw_update)
 

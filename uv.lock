@@ -1038,7 +1038,7 @@ wheels = [
 
 [[package]]
 name = "osidb-bindings"
-version = "5.10.0"
+version = "5.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1047,9 +1047,9 @@ dependencies = [
     { name = "requests" },
     { name = "requests-gssapi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/cd/46153cd527a1cda8784bd4990ba75ce9a46e12d960988ea39e24e946c894/osidb_bindings-5.10.0.tar.gz", hash = "sha256:9d435fcfa88ffcce19243fc71909634a33b0543bef6a50ac2adce2d7d32e07fb", size = 320128, upload-time = "2026-05-05T13:18:31.401Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/16/50cdf15b4143c58dbb615e68adff248a1068ac293f63721f1950c486445c/osidb_bindings-5.11.0.tar.gz", hash = "sha256:fe1e57504ecbb00f5a2b66cdb16a9e7ffce95c50dfb615752d6a637181ba67e3", size = 323415, upload-time = "2026-06-02T08:27:20.248Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/3e/b9e43521772e78de32266f1edaa94d81adb1cc4485c1c93666b08cb680ca/osidb_bindings-5.10.0-py3-none-any.whl", hash = "sha256:d4818831b33cb29b458b780445ca8f47fd94b8fb246d3cbe3dc44448342d2006", size = 789661, upload-time = "2026-05-05T13:18:30.016Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/35/21ab39b511d72ffe276738d7697d407c42b845955abca883497c6bd4de95/osidb_bindings-5.11.0-py3-none-any.whl", hash = "sha256:3754c25fd472ca1968686304651a83f76be60cbe965cb00d009d6c27cde2da8c", size = 796080, upload-time = "2026-06-02T08:27:19.017Z" },
 ]
 
 [[package]]
@@ -1070,7 +1070,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.0,<2" },
-    { name = "osidb-bindings", specifier = ">=5.10.0,<6" },
+    { name = "osidb-bindings", specifier = ">=5.11.0,<6" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
 ]

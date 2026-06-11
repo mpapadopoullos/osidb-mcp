@@ -1,8 +1,4 @@
-"""MCP tool implementations for OSIDB flaw workflow state transitions.
-
-Uses raw HTTP calls to avoid osidb-bindings model validation issues
-(e.g. unrecognized FlawLabelType values in responses).
-"""
+"""MCP tool implementations for OSIDB flaw workflow state transitions."""
 
 from __future__ import annotations
 
@@ -11,6 +7,7 @@ from typing import Any
 import requests
 
 from osidb_mcp.errors import http_error_payload
+from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import get_session
 
 
@@ -18,37 +15,6 @@ def _error_response(exc: BaseException) -> dict[str, Any]:
     if isinstance(exc, requests.RequestException):
         return {"ok": False, **http_error_payload(exc)}
     return {"ok": False, "error": "osidb_error", "detail": str(exc)}
-
-
-def _workflow_action(flaw_id: str, action: str, json_body: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Execute a workflow action via raw HTTP POST.
-
-    Uses direct requests instead of session.flaws.promote/reject/etc. to avoid
-    osidb-bindings Pydantic response parsing which crashes on unrecognized enum
-    values (e.g. FlawLabelType "bu" not in bindings <=5.10).
-    """
-    session = get_session()
-    client = session.get_client_with_new_access_token()
-
-    kwargs: dict[str, Any] = {
-        "headers": client.get_headers(),
-        "verify": client.verify_ssl,
-        "auth": client.get_auth(),
-        "timeout": client.get_timeout(),
-    }
-    if json_body is not None:
-        kwargs["json"] = json_body
-
-    try:
-        resp = requests.post(
-            f"{client.base_url}/osidb/api/v1/flaws/{flaw_id}/{action}",
-            **kwargs,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        return {"ok": False, **http_error_payload(exc)}
-
-    return {"ok": True, "classification": resp.json()}
 
 
 def flaw_promote(flaw_id: str) -> dict[str, Any]:
@@ -66,7 +32,12 @@ def flaw_promote(flaw_id: str) -> dict[str, Any]:
     Returns:
         JSON dict with ``ok``, ``classification`` (new workflow state info).
     """
-    return _workflow_action(flaw_id, "promote")
+    session = get_session()
+    try:
+        result = session.flaws.promote(flaw_id)
+        return {"ok": True, "classification": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
 
 
 def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
@@ -81,7 +52,12 @@ def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
     Returns:
         JSON dict with ``ok``, ``classification`` (new workflow state info).
     """
-    return _workflow_action(flaw_id, "reject", {"reason": reason})
+    session = get_session()
+    try:
+        result = session.flaws.reject(flaw_id, {"reason": reason})
+        return {"ok": True, "classification": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
 
 
 def flaw_reset(flaw_id: str) -> dict[str, Any]:
@@ -95,7 +71,12 @@ def flaw_reset(flaw_id: str) -> dict[str, Any]:
     Returns:
         JSON dict with ``ok``, ``classification`` (new workflow state info).
     """
-    return _workflow_action(flaw_id, "reset")
+    session = get_session()
+    try:
+        result = session.flaws.reset(flaw_id)
+        return {"ok": True, "classification": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
 
 
 def flaw_revert(flaw_id: str) -> dict[str, Any]:
@@ -112,4 +93,9 @@ def flaw_revert(flaw_id: str) -> dict[str, Any]:
     Returns:
         JSON dict with ``ok``, ``classification`` (new workflow state info).
     """
-    return _workflow_action(flaw_id, "revert")
+    session = get_session()
+    try:
+        result = session.flaws.revert(flaw_id)
+        return {"ok": True, "classification": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
