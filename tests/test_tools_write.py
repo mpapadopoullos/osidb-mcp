@@ -8,13 +8,24 @@ from osidb_mcp.tools_write import (
     affect_add,
     affect_remove,
     affect_update,
+    affects_bulk_create,
+    affects_bulk_delete,
+    affects_bulk_update,
     flaw_acknowledgment_add,
     flaw_acknowledgment_remove,
+    flaw_acknowledgment_update,
+    flaw_comment_create,
     flaw_create,
     flaw_cvss_add,
     flaw_cvss_remove,
+    flaw_cvss_update,
+    flaw_incident_request,
+    flaw_label_add,
+    flaw_label_remove,
+    flaw_package_version_add,
     flaw_reference_add,
     flaw_reference_remove,
+    flaw_reference_update,
     flaw_update,
     tracker_file,
 )
@@ -809,3 +820,375 @@ def test_cvss_remove_error(mock_get_session: MagicMock) -> None:
 
     assert result["ok"] is False
     assert result["status_code"] == 404
+
+
+# ---------------------------------------------------------------------------
+# flaw_comment_create tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=False)
+    comment = MagicMock()
+    comment.to_dict.return_value = {
+        "uuid": "comment-uuid-1",
+        "text": "Triage note",
+    }
+    session.flaws.comments.create.return_value = comment
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Triage note",
+    )
+
+    assert result["ok"] is True
+    assert result["comment"]["uuid"] == "comment-uuid-1"
+    session.flaws.comments.create.assert_called_once_with(
+        {"text": "Triage note", "embargoed": False, "is_private": False},
+        "CVE-2026-52719",
+    )
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_private(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=True)
+    comment = MagicMock()
+    comment.to_dict.return_value = {"uuid": "comment-uuid-2", "text": "Private note"}
+    session.flaws.comments.create.return_value = comment
+
+    result = flaw_comment_create(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        text="Private note",
+        is_private=True,
+    )
+
+    assert result["ok"] is True
+    session.flaws.comments.create.assert_called_once_with(
+        {"text": "Private note", "embargoed": True, "is_private": True},
+        "aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+    )
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_flaw_not_found(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.flaws.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = flaw_comment_create(
+        flaw_id="CVE-9999-00000",
+        text="Should fail",
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+    session.flaws.comments.create.assert_not_called()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_api_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=False)
+    resp = MagicMock()
+    resp.status_code = 400
+    resp.text = "Bad request"
+    session.flaws.comments.create.side_effect = requests.HTTPError(response=resp)
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Should fail on create",
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 400
+
+
+# ---------------------------------------------------------------------------
+# flaw_label_add / flaw_label_remove tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_label_add_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    r = MagicMock()
+    r.status_code = 201
+    parsed = MagicMock()
+    parsed.to_dict.return_value = {"label": "triage", "state": "NEW"}
+    r.parsed = parsed
+    with patch(
+        "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_flaws_labels_create.sync_detailed",
+        return_value=r,
+    ):
+        result = flaw_label_add(
+            flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+            label="triage",
+        )
+
+    assert result["ok"] is True
+    assert result["label"]["label"] == "triage"
+
+
+def test_label_add_invalid_uuid() -> None:
+    result = flaw_label_add(flaw_id="not-a-uuid", label="triage")
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_label_remove_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    r = MagicMock()
+    r.status_code = 204
+    with patch(
+        "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_flaws_labels_destroy.sync_detailed",
+        return_value=r,
+    ):
+        result = flaw_label_remove(
+            flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+            label_id="label-1",
+        )
+
+    assert result["ok"] is True
+    assert result["deleted"] == "label-1"
+
+
+# ---------------------------------------------------------------------------
+# flaw_incident_request tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_incident_request_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    r = MagicMock()
+    r.status_code = 200
+    parsed = MagicMock()
+    parsed.to_dict.return_value = {"kind": "MAJOR_INCIDENT_REQUESTED", "comment": "urgent"}
+    r.parsed = parsed
+    with patch(
+        "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_flaws_incident_requests_create.sync_detailed",
+        return_value=r,
+    ):
+        result = flaw_incident_request(
+            flaw_id="CVE-2026-52719",
+            kind="MAJOR_INCIDENT_REQUESTED",
+            comment="urgent",
+        )
+
+    assert result["ok"] is True
+    assert result["incident_request"]["kind"] == "MAJOR_INCIDENT_REQUESTED"
+
+
+# ---------------------------------------------------------------------------
+# flaw_acknowledgment_update tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_ack_update_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.name = "Original"
+    current.affiliation = "Org"
+    current.from_upstream = False
+    current.embargoed = True
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.flaws.acknowledgments.retrieve.return_value = current
+    updated = _mock_subresource("ack-1")
+    session.flaws.acknowledgments.update.return_value = updated
+
+    result = flaw_acknowledgment_update(
+        flaw_id="CVE-2026-52719",
+        acknowledgment_id="ack-1",
+        name="Updated Name",
+    )
+
+    assert result["ok"] is True
+    update_data = session.flaws.acknowledgments.update.call_args[0][2]
+    assert update_data["name"] == "Updated Name"
+    assert update_data["affiliation"] == "Org"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_ack_update_retrieve_fails(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.flaws.acknowledgments.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = flaw_acknowledgment_update(
+        flaw_id="CVE-2026-52719",
+        acknowledgment_id="bad-id",
+        name="X",
+    )
+
+    assert result["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# flaw_reference_update tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_ref_update_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.url = "https://old.com"
+    current.description = "Old"
+    current.type = "EXTERNAL"
+    current.embargoed = False
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.flaws.references.retrieve.return_value = current
+    updated = _mock_subresource("ref-1")
+    session.flaws.references.update.return_value = updated
+
+    result = flaw_reference_update(
+        flaw_id="CVE-2026-52719",
+        reference_id="ref-1",
+        url="https://new.com",
+    )
+
+    assert result["ok"] is True
+    update_data = session.flaws.references.update.call_args[0][2]
+    assert update_data["url"] == "https://new.com"
+
+
+# ---------------------------------------------------------------------------
+# flaw_cvss_update tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_cvss_update_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    current.comment = ""
+    current.cvss_version = "V3"
+    current.issuer = "RH"
+    current.embargoed = False
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.flaws.cvss_scores.retrieve.return_value = current
+    updated = _mock_subresource("cvss-1")
+    session.flaws.cvss_scores.update.return_value = updated
+
+    result = flaw_cvss_update(
+        flaw_id="CVE-2026-52719",
+        cvss_score_id="cvss-1",
+        vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
+    )
+
+    assert result["ok"] is True
+    update_data = session.flaws.cvss_scores.update.call_args[0][2]
+    assert update_data["vector"] == "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H"
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_add tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_package_version_add_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=False)
+    r = MagicMock()
+    r.status_code = 201
+    parsed = MagicMock()
+    parsed.to_dict.return_value = {"package": "curl", "versions": []}
+    r.parsed = parsed
+    session.get_client_with_new_access_token.return_value = MagicMock()
+    with patch(
+        "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_flaws_package_versions_create.sync_detailed",
+        return_value=r,
+    ):
+        result = flaw_package_version_add(
+            flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+            package="curl",
+            versions=[{"version": "7.88.1"}],
+        )
+
+    assert result["ok"] is True
+    assert result["package_version"]["package"] == "curl"
+
+
+def test_package_version_add_invalid_uuid() -> None:
+    result = flaw_package_version_add(
+        flaw_id="not-a-uuid",
+        package="curl",
+        versions=[{"version": "7.88.1"}],
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+
+
+# ---------------------------------------------------------------------------
+# affects_bulk_create / update / delete tests
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affects_bulk_create_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    result_obj = MagicMock()
+    result_obj.to_dict.return_value = [{"uuid": "a1"}, {"uuid": "a2"}]
+    session.affects.bulk_create.return_value = result_obj
+
+    result = affects_bulk_create(affects=[
+        {"flaw": "f1", "ps_module": "m", "ps_component": "c", "affectedness": "NEW", "embargoed": False},
+        {"flaw": "f1", "ps_module": "m2", "ps_component": "c2", "affectedness": "NEW", "embargoed": False},
+    ])
+
+    assert result["ok"] is True
+    session.affects.bulk_create.assert_called_once()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affects_bulk_create_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 400
+    resp.text = "Bad request"
+    session.affects.bulk_create.side_effect = requests.HTTPError(response=resp)
+
+    result = affects_bulk_create(affects=[{"flaw": "f1"}])
+
+    assert result["ok"] is False
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affects_bulk_update_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    result_obj = MagicMock()
+    result_obj.to_dict.return_value = [{"uuid": "a1"}]
+    session.affects.bulk_update.return_value = result_obj
+
+    result = affects_bulk_update(affects=[
+        {"uuid": "a1", "updated_dt": "2026-06-08T12:00:00Z", "affectedness": "AFFECTED"},
+    ])
+
+    assert result["ok"] is True
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affects_bulk_delete_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.bulk_delete.return_value = None
+
+    result = affects_bulk_delete(affect_uuids=["uuid-1", "uuid-2"])
+
+    assert result["ok"] is True
+    assert result["deleted"] == ["uuid-1", "uuid-2"]
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affects_bulk_delete_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.affects.bulk_delete.side_effect = requests.HTTPError(response=resp)
+
+    result = affects_bulk_delete(affect_uuids=["bad-uuid"])
+
+    assert result["ok"] is False
