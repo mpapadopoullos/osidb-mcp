@@ -358,8 +358,9 @@ def test_flaw_update_put_fails(mock_get_session: MagicMock, mock_get: MagicMock,
 def test_affect_add_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
     session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=True)
-    affect_result = _mock_subresource("affect-uuid-1")
-    session.affects.create.return_value = affect_result
+    bulk_result = MagicMock()
+    bulk_result.to_dict.return_value = [{"uuid": "affect-uuid-1"}]
+    session.affects.bulk_create.return_value = bulk_result
 
     result = affect_add(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
@@ -367,22 +368,20 @@ def test_affect_add_success(mock_get_session: MagicMock) -> None:
     )
 
     assert result["ok"] is True
-    assert len(result["created"]) == 1
-    assert "partial" not in result
-
-    create_data = session.affects.create.call_args[0][0]
-    assert create_data["flaw"] == "aaa58a80-dd9c-43dd-ba19-61fa88a66714"
-    assert create_data["embargoed"] is True
+    session.affects.bulk_create.assert_called_once()
+    bulk_data = session.affects.bulk_create.call_args[0][0]
+    assert bulk_data[0]["flaw"] == "aaa58a80-dd9c-43dd-ba19-61fa88a66714"
+    assert bulk_data[0]["embargoed"] is True
 
 
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_add_partial_failure(mock_get_session: MagicMock) -> None:
+def test_affect_add_error(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
     session.flaws.retrieve.return_value = _mock_flaw_full()
-    session.affects.create.side_effect = [
-        _mock_subresource("a1"),
-        requests.ConnectionError("fail"),
-    ]
+    resp = MagicMock()
+    resp.status_code = 400
+    resp.text = "Bad request"
+    session.affects.bulk_create.side_effect = requests.HTTPError(response=resp)
 
     result = affect_add(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
@@ -392,40 +391,53 @@ def test_affect_add_partial_failure(mock_get_session: MagicMock) -> None:
         ],
     )
 
-    assert result["ok"] is True
-    assert result["partial"] is True
-    assert len(result["created"]) == 1
-    assert len(result["errors"]) == 1
+    assert result["ok"] is False
 
 
 # ---------------------------------------------------------------------------
 # affect_remove tests
 # ---------------------------------------------------------------------------
 
+@patch("osidb_mcp.tools_write.requests.delete")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_remove_success(mock_get_session: MagicMock) -> None:
-    session = mock_get_session.return_value
-    session.affects.delete.return_value = None
+def test_affect_remove_success(mock_get_session: MagicMock, mock_delete: MagicMock) -> None:
+    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    delete_resp = MagicMock()
+    delete_resp.raise_for_status.return_value = None
+    mock_delete.return_value = delete_resp
 
     result = affect_remove(affect_uuids=["uuid-1", "uuid-2"])
 
     assert result["ok"] is True
     assert result["deleted"] == ["uuid-1", "uuid-2"]
-    assert "partial" not in result
-    assert session.affects.delete.call_count == 2
+    mock_delete.assert_called_once()
+    assert mock_delete.call_args[1]["json"] == ["uuid-1", "uuid-2"]
 
 
+@patch("osidb_mcp.tools_write.requests.delete")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_remove_partial_failure(mock_get_session: MagicMock) -> None:
-    session = mock_get_session.return_value
-    session.affects.delete.side_effect = [None, requests.ConnectionError("fail")]
+def test_affect_remove_error(mock_get_session: MagicMock, mock_delete: MagicMock) -> None:
+    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
 
-    result = affect_remove(affect_uuids=["uuid-1", "uuid-2"])
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    mock_delete.side_effect = requests.HTTPError(response=resp)
 
-    assert result["ok"] is True
-    assert result["partial"] is True
-    assert result["deleted"] == ["uuid-1"]
-    assert len(result["errors"]) == 1
+    result = affect_remove(affect_uuids=["bad-uuid"])
+
+    assert result["ok"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -872,6 +884,31 @@ def test_comment_create_private(mock_get_session: MagicMock) -> None:
 
 
 @patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_with_creator(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=False)
+    comment = MagicMock()
+    comment.to_dict.return_value = {
+        "uuid": "comment-uuid-3",
+        "text": "Note with creator",
+        "creator": "jdoe@redhat.com",
+    }
+    session.flaws.comments.create.return_value = comment
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Note with creator",
+        creator="jdoe@redhat.com",
+    )
+
+    assert result["ok"] is True
+    session.flaws.comments.create.assert_called_once_with(
+        {"text": "Note with creator", "embargoed": False, "is_private": False, "creator": "jdoe@redhat.com"},
+        "CVE-2026-52719",
+    )
+
+
+@patch("osidb_mcp.tools_write.get_session")
 def test_comment_create_flaw_not_found(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
     resp = MagicMock()
@@ -1170,24 +1207,42 @@ def test_affects_bulk_update_success(mock_get_session: MagicMock) -> None:
     assert result["ok"] is True
 
 
+@patch("osidb_mcp.tools_write.requests.delete")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affects_bulk_delete_success(mock_get_session: MagicMock) -> None:
-    session = mock_get_session.return_value
-    session.affects.bulk_delete.return_value = None
+def test_affects_bulk_delete_success(mock_get_session: MagicMock, mock_delete: MagicMock) -> None:
+    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    delete_resp = MagicMock()
+    delete_resp.raise_for_status.return_value = None
+    mock_delete.return_value = delete_resp
 
     result = affects_bulk_delete(affect_uuids=["uuid-1", "uuid-2"])
 
     assert result["ok"] is True
     assert result["deleted"] == ["uuid-1", "uuid-2"]
+    mock_delete.assert_called_once()
+    assert mock_delete.call_args[1]["json"] == ["uuid-1", "uuid-2"]
 
 
+@patch("osidb_mcp.tools_write.requests.delete")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affects_bulk_delete_error(mock_get_session: MagicMock) -> None:
-    session = mock_get_session.return_value
+def test_affects_bulk_delete_error(mock_get_session: MagicMock, mock_delete: MagicMock) -> None:
+    client = mock_get_session.return_value.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
     resp = MagicMock()
     resp.status_code = 404
     resp.text = "Not found"
-    session.affects.bulk_delete.side_effect = requests.HTTPError(response=resp)
+    mock_delete.side_effect = requests.HTTPError(response=resp)
 
     result = affects_bulk_delete(affect_uuids=["bad-uuid"])
 

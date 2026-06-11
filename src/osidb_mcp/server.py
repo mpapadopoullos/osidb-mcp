@@ -376,7 +376,8 @@ def create_server(settings: Settings) -> FastMCP:
             description=(
                 "Create a comment on a flaw "
                 "(POST /osidb/api/v1/flaws/{id}/comments). "
-                "Auto-fetches the flaw's embargoed status."
+                "Auto-fetches the flaw's embargoed status. "
+                "Optional ``creator`` sets the comment author (defaults to authenticated user)."
             ),
         )(tools_write.flaw_comment_create)
 

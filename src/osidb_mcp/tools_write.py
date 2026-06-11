@@ -305,6 +305,10 @@ def affect_add(
 ) -> dict[str, Any]:
     """Add one or more affects to an existing flaw.
 
+    Delegates to ``affects_bulk_create`` (POST /osidb/api/v2/affects/bulk),
+    which matches OSIM's actual pattern.  Auto-sets ``flaw`` and ``embargoed``
+    on each affect if not already present.
+
     Args:
         flaw_id: Flaw UUID (required). Must be the internal UUID, not a CVE id.
         affects: List of affect dicts, each with ``ps_update_stream`` (required),
@@ -319,25 +323,12 @@ def affect_add(
     except Exception as exc:
         return _error_response(exc)
 
-    created: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
-
-    for i, affect in enumerate(affects):
+    for affect in affects:
         affect["flaw"] = flaw_id
         if "embargoed" not in affect:
             affect["embargoed"] = flaw_embargoed
-        try:
-            result = session.affects.create(affect)
-            created.append(to_jsonable(result))
-        except Exception as exc:
-            detail = http_error_payload(exc) if isinstance(exc, requests.RequestException) else str(exc)
-            errors.append({"index": i, "affect": affect, "error": detail})
 
-    out: dict[str, Any] = {"ok": True, "created": created}
-    if errors:
-        out["partial"] = True
-        out["errors"] = errors
-    return out
+    return affects_bulk_create(affects)
 
 
 def affect_remove(
@@ -345,27 +336,13 @@ def affect_remove(
 ) -> dict[str, Any]:
     """Remove one or more affects by UUID.
 
+    Delegates to ``affects_bulk_delete`` (DELETE /osidb/api/v2/affects/bulk),
+    which matches OSIM's actual pattern.
+
     Args:
         affect_uuids: List of affect UUID strings to delete.
     """
-    session = get_session()
-
-    deleted: list[str] = []
-    errors: list[dict[str, Any]] = []
-
-    for uuid in affect_uuids:
-        try:
-            session.affects.delete(uuid)
-            deleted.append(uuid)
-        except Exception as exc:
-            detail = http_error_payload(exc) if isinstance(exc, requests.RequestException) else str(exc)
-            errors.append({"affect_uuid": uuid, "error": detail})
-
-    out: dict[str, Any] = {"ok": True, "deleted": deleted}
-    if errors:
-        out["partial"] = True
-        out["errors"] = errors
-    return out
+    return affects_bulk_delete(affect_uuids)
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +617,7 @@ def flaw_comment_create(
     flaw_id: str,
     text: str,
     *,
+    creator: str | None = None,
     is_private: bool = False,
 ) -> dict[str, Any]:
     """Create a comment on a flaw (POST /osidb/api/v1/flaws/{id}/comments).
@@ -650,6 +628,8 @@ def flaw_comment_create(
     Args:
         flaw_id: Flaw UUID or CVE id (required).
         text: Comment body text (required).
+        creator: Comment author identifier (e.g. Jira username).
+            If omitted, defaults to the authenticated user.
         is_private: Whether the comment is private (default False).
     """
     session = get_session()
@@ -665,6 +645,8 @@ def flaw_comment_create(
         "embargoed": flaw_embargoed,
         "is_private": is_private,
     }
+    if creator is not None:
+        comment_data["creator"] = creator
 
     try:
         result = session.flaws.comments.create(comment_data, flaw_id)
@@ -1058,12 +1040,26 @@ def affects_bulk_delete(
 ) -> dict[str, Any]:
     """Bulk-delete affects (DELETE /osidb/api/v2/affects/bulk).
 
+    Uses raw HTTP because osidb-bindings does not expose bulk_delete on
+    session.affects (blocked by OSIDB-2996) and the generated client's
+    bulk_destroy endpoint omits the request body.
+
     Args:
         affect_uuids: List of affect UUID strings to delete.
     """
     session = get_session()
+    client = session.get_client_with_new_access_token()
+
     try:
-        session.affects.bulk_delete([{"uuid": u} for u in affect_uuids])
+        resp = requests.delete(
+            f"{client.base_url}/osidb/api/v2/affects/bulk",
+            json=affect_uuids,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
         return {"ok": True, "deleted": affect_uuids}
     except Exception as exc:
         return _error_response(exc)
