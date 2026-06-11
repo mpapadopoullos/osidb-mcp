@@ -427,8 +427,8 @@ def flaws_search(
 ) -> dict[str, Any]:
     lim = clamp_limit(limit)
     try:
-        resp = get_session().flaws.search(
-            text,
+        resp = get_session().flaws.retrieve_list(
+            search=text,
             api_version=api_version,
             limit=lim,
         )
@@ -891,6 +891,352 @@ def affect_cvss_scores_list(
     except (requests.RequestException, ValueError) as e:
         if isinstance(e, ValueError):
             return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+def affect_cvss_score_get(
+    affect_id: str,
+    cvss_score_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        aid = _parse_uuid_param("affect_id", affect_id)
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        score = get_session().affects.cvss_scores.retrieve(
+            aid,
+            cvss_score_id,
+            api_version=api_version,
+            **kw,
+        )
+        return {"ok": True, "cvss_score": to_jsonable(score)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+
+# --- Single sub-resource retrieval tools ---
+
+
+def flaw_comment_get(
+    flaw_id: str,
+    comment_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        comment = get_session().flaws.comments.retrieve(
+            flaw_id, comment_id, api_version=api_version, **kw,
+        )
+        return {"ok": True, "comment": to_jsonable(comment)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_label_get(
+    flaw_id: str,
+    label_id: str,
+    *,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        label = get_session().flaws.labels.retrieve(
+            flaw_id, label_id, api_version=api_version,
+        )
+        return {"ok": True, "label": to_jsonable(label)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_acknowledgment_get(
+    flaw_id: str,
+    acknowledgment_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        ack = get_session().flaws.acknowledgments.retrieve(
+            flaw_id, acknowledgment_id, api_version=api_version, **kw,
+        )
+        return {"ok": True, "acknowledgment": to_jsonable(ack)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_reference_get(
+    flaw_id: str,
+    reference_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        ref = get_session().flaws.references.retrieve(
+            flaw_id, reference_id, api_version=api_version, **kw,
+        )
+        return {"ok": True, "reference": to_jsonable(ref)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_cvss_score_get(
+    flaw_id: str,
+    cvss_score_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        score = get_session().flaws.cvss_scores.retrieve(
+            flaw_id, cvss_score_id, api_version=api_version, **kw,
+        )
+        return {"ok": True, "cvss_score": to_jsonable(score)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_package_version_get(
+    flaw_id: str,
+    package_version_id: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        pv = get_session().flaws.package_versions.retrieve(
+            flaw_id, package_version_id, api_version=api_version, **kw,
+        )
+        return {"ok": True, "package_version": to_jsonable(pv)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Alerts ---
+
+
+def _raw_api_call(module_path: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Call a low-level bindings sync_detailed function by module path."""
+    mod = importlib.import_module(module_path)
+    sync_fn = getattr(mod, "sync_detailed")
+    client = get_session().get_client_with_new_access_token()
+    r = sync_fn(*args, client=client, **kwargs)
+    if r.parsed is None:
+        return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
+    return {"ok": True, "data": to_jsonable(r.parsed.to_dict())}
+
+
+def alerts_list(
+    *,
+    parent_uuid: str | None = None,
+    parent_model: str | None = None,
+    name: str | None = None,
+    alert_type: str | None = None,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if parent_uuid:
+            kw["parent_uuid"] = _parse_uuid_param("parent_uuid", parent_uuid)
+        if parent_model:
+            from osidb_bindings.bindings.python_client.models.osidb_api_v1_alerts_list_parent_model import (
+                OsidbApiV1AlertsListParentModel,
+            )
+            kw["parent_model"] = OsidbApiV1AlertsListParentModel(parent_model)
+        if name:
+            kw["name"] = name
+        if alert_type:
+            from osidb_bindings.bindings.python_client.models.osidb_api_v1_alerts_list_alert_type import (
+                OsidbApiV1AlertsListAlertType,
+            )
+            kw["alert_type"] = OsidbApiV1AlertsListAlertType(alert_type)
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        kw["limit"] = lim
+        kw["offset"] = off
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_alerts_list",
+            **kw,
+        )
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+def alert_get(
+    alert_uuid: str,
+    *,
+    include_fields: list[str] | None = None,
+    exclude_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    try:
+        uid = _parse_uuid_param("alert_uuid", alert_uuid)
+        kw: dict[str, Any] = {}
+        if include_fields:
+            kw["include_fields"] = include_fields
+        if exclude_fields:
+            kw["exclude_fields"] = exclude_fields
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_alerts_retrieve",
+            uid, **kw,
+        )
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Exploits service ---
+
+
+def exploits_epss(
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    try:
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        kw: dict[str, Any] = {"limit": lim, "offset": off}
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.exploits.exploits_api_v1_epss_list",
+            **kw,
+        )
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def exploits_cve_map() -> dict[str, Any]:
+    try:
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.exploits.exploits_api_v1_cve_map_retrieve",
+        )
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def exploits_report_date(
+    date: str,
+    *,
+    api_version: Literal["v1", "v2"] = "v1",
+) -> dict[str, Any]:
+    try:
+        d = datetime.date.fromisoformat(date.strip())
+        mod = (
+            "osidb_bindings.bindings.python_client.api.exploits."
+            f"exploits_api_{api_version}_report_date_retrieve"
+        )
+        return _raw_api_call(mod, d)
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+def exploits_report_explanations(
+    *,
+    api_version: Literal["v1", "v2"] = "v1",
+) -> dict[str, Any]:
+    try:
+        mod = (
+            "osidb_bindings.bindings.python_client.api.exploits."
+            f"exploits_api_{api_version}_report_explanations_retrieve"
+        )
+        return _raw_api_call(mod)
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def exploits_flaw_data(
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+    api_version: Literal["v1", "v2"] = "v1",
+) -> dict[str, Any]:
+    try:
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        mod = (
+            "osidb_bindings.bindings.python_client.api.exploits."
+            f"exploits_api_{api_version}_flaw_data_list"
+        )
+        return _raw_api_call(mod, limit=lim, offset=off)
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Workflows ---
+
+
+def workflows_list() -> dict[str, Any]:
+    try:
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.workflows.workflows_api_v1_workflows_retrieve",
+        )
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def workflow_get(
+    workflow_id: str,
+    *,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    try:
+        kw: dict[str, Any] = {}
+        if verbose:
+            kw["verbose"] = True
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.workflows.workflows_api_v1_workflows_retrieve_2",
+            workflow_id, **kw,
+        )
+    except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
 

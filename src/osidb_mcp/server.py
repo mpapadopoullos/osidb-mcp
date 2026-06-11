@@ -22,7 +22,8 @@ use lower-level ``flaws_list`` / ``flaws_count`` when you need full filter contr
 
 _READWRITE_INSTRUCTIONS = _READONLY_INSTRUCTIONS + """\
 
-This server is running in **readwrite** mode. Mutation tools (``flaw_create``) are available in addition to \
+This server is running in **readwrite** mode. Mutation tools (``flaw_create``, ``flaw_update``, \
+``flaw_label_add``, ``flaw_incident_request``, ``affects_bulk_*``, etc.) are available in addition to \
 all read-only tools. Write operations contact OSIDB and create real data; treat transcripts accordingly.
 """
 
@@ -155,6 +156,94 @@ def create_server(settings: Settings) -> FastMCP:
         ),
     )(tools_read.affect_cvss_scores_list)
     mcp.tool(
+        name="affect_cvss_score_get",
+        description=(
+            "Retrieve a single CVSS score for an affect by affect uuid and score id. "
+            "Optional ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.affect_cvss_score_get)
+    mcp.tool(
+        name="flaw_comment_get",
+        description="Retrieve a single comment on a flaw by flaw id and comment id.",
+    )(tools_read.flaw_comment_get)
+    mcp.tool(
+        name="flaw_label_get",
+        description="Retrieve a single collaborator label on a flaw by flaw id and label id.",
+    )(tools_read.flaw_label_get)
+    mcp.tool(
+        name="flaw_acknowledgment_get",
+        description=(
+            "Retrieve a single acknowledgment on a flaw by flaw id and acknowledgment id. "
+            "Optional ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.flaw_acknowledgment_get)
+    mcp.tool(
+        name="flaw_reference_get",
+        description=(
+            "Retrieve a single reference on a flaw by flaw id and reference id. "
+            "Optional ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.flaw_reference_get)
+    mcp.tool(
+        name="flaw_cvss_score_get",
+        description=(
+            "Retrieve a single CVSS score on a flaw by flaw id and score id. "
+            "Optional ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.flaw_cvss_score_get)
+    mcp.tool(
+        name="flaw_package_version_get",
+        description=(
+            "Retrieve a single package version entry on a flaw by flaw id and version id. "
+            "Optional ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.flaw_package_version_get)
+    mcp.tool(
+        name="alerts_list",
+        description=(
+            "List validation alerts with optional filters: parent_uuid, parent_model, "
+            "name, alert_type. Supports ``include_fields`` / ``exclude_fields``."
+        ),
+    )(tools_read.alerts_list)
+    mcp.tool(
+        name="alert_get",
+        description="Retrieve a single alert by UUID.",
+    )(tools_read.alert_get)
+    mcp.tool(
+        name="exploits_epss",
+        description=(
+            "List EPSS (Exploit Prediction Scoring System) scores. "
+            "Paginated via limit/offset."
+        ),
+    )(tools_read.exploits_epss)
+    mcp.tool(
+        name="exploits_cve_map",
+        description="Get the CVE exploit map — check which CVEs have known exploits.",
+    )(tools_read.exploits_cve_map)
+    mcp.tool(
+        name="exploits_report_date",
+        description=(
+            "Get an exploit report for a specific date (ISO 8601, e.g. '2026-06-01'). "
+            "Supports v1 and v2 API versions."
+        ),
+    )(tools_read.exploits_report_date)
+    mcp.tool(
+        name="exploits_report_explanations",
+        description="Get explanations for exploit report findings. Supports v1/v2.",
+    )(tools_read.exploits_report_explanations)
+    mcp.tool(
+        name="exploits_flaw_data",
+        description="List exploit-enriched flaw data. Paginated. Supports v1/v2.",
+    )(tools_read.exploits_flaw_data)
+    mcp.tool(
+        name="workflows_list",
+        description="List available OSIDB workflow definitions.",
+    )(tools_read.workflows_list)
+    mcp.tool(
+        name="workflow_get",
+        description="Get details for a specific workflow by id. Use verbose=true for full state graph.",
+    )(tools_read.workflow_get)
+    mcp.tool(
         name="search_component",
         description=(
             "Find flaws touching flaw-level ``components`` values (``components_in``). "
@@ -281,6 +370,106 @@ def create_server(settings: Settings) -> FastMCP:
                 "a list of affect UUIDs to create trackers for."
             ),
         )(tools_write.tracker_file)
+
+        mcp.tool(
+            name="flaw_comment_create",
+            description=(
+                "Create a comment on a flaw "
+                "(POST /osidb/api/v1/flaws/{id}/comments). "
+                "Auto-fetches the flaw's embargoed status. "
+                "Optional ``creator`` sets the comment author (defaults to authenticated user)."
+            ),
+        )(tools_write.flaw_comment_create)
+
+        mcp.tool(
+            name="flaw_label_add",
+            description=(
+                "Add a collaborator label to a flaw "
+                "(POST /osidb/api/v1/flaws/{id}/labels). "
+                "Requires flaw UUID. Optional state (NEW, REQ, DONE, SKIP), contributor, label_type."
+            ),
+        )(tools_write.flaw_label_add)
+
+        mcp.tool(
+            name="flaw_label_remove",
+            description=(
+                "Remove a label from a flaw "
+                "(DELETE /osidb/api/v1/flaws/{id}/labels/{id}). "
+                "Requires flaw UUID."
+            ),
+        )(tools_write.flaw_label_remove)
+
+        mcp.tool(
+            name="flaw_incident_request",
+            description=(
+                "Create an incident request on a flaw "
+                "(POST /osidb/api/v1/flaws/{id}/incident-requests). "
+                "Kind: MAJOR_INCIDENT_REQUESTED, MINOR_INCIDENT_REQUESTED, or EXPLOITS_KEV_REQUESTED."
+            ),
+        )(tools_write.flaw_incident_request)
+
+        mcp.tool(
+            name="flaw_acknowledgment_update",
+            description=(
+                "Update an acknowledgment on a flaw "
+                "(PUT /osidb/api/v1/flaws/{id}/acknowledgments/{id}). "
+                "Auto-fetches the current acknowledgment for optimistic concurrency."
+            ),
+        )(tools_write.flaw_acknowledgment_update)
+
+        mcp.tool(
+            name="flaw_reference_update",
+            description=(
+                "Update a reference on a flaw "
+                "(PUT /osidb/api/v1/flaws/{id}/references/{id}). "
+                "Auto-fetches the current reference for optimistic concurrency."
+            ),
+        )(tools_write.flaw_reference_update)
+
+        mcp.tool(
+            name="flaw_cvss_update",
+            description=(
+                "Update a CVSS score on a flaw "
+                "(PUT /osidb/api/v1/flaws/{id}/cvss_scores/{id}). "
+                "Auto-fetches the current score for optimistic concurrency."
+            ),
+        )(tools_write.flaw_cvss_update)
+
+        mcp.tool(
+            name="flaw_package_version_add",
+            description=(
+                "Add package version info to a flaw "
+                "(POST /osidb/api/v1/flaws/{id}/package_versions). "
+                "Each version needs ``version`` and ``status`` (AFFECTED, UNAFFECTED, UNKNOWN)."
+            ),
+        )(tools_write.flaw_package_version_add)
+
+        mcp.tool(
+            name="affects_bulk_create",
+            description=(
+                "Bulk-create affects in one API call "
+                "(POST /osidb/api/v2/affects/bulk). "
+                "Each affect needs flaw UUID, ps_module, ps_component, affectedness, embargoed."
+            ),
+        )(tools_write.affects_bulk_create)
+
+        mcp.tool(
+            name="affects_bulk_update",
+            description=(
+                "Bulk-update affects in one API call "
+                "(PUT /osidb/api/v2/affects/bulk). "
+                "Each affect needs uuid and updated_dt for optimistic concurrency."
+            ),
+        )(tools_write.affects_bulk_update)
+
+        mcp.tool(
+            name="affects_bulk_delete",
+            description=(
+                "Bulk-delete affects in one API call "
+                "(DELETE /osidb/api/v2/affects/bulk). "
+                "Provide list of affect UUID strings."
+            ),
+        )(tools_write.affects_bulk_delete)
 
         mcp.tool(
             name="flaw_promote",

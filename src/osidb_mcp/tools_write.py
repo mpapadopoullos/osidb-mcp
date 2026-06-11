@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
+from uuid import UUID
 
 import requests
 
@@ -277,6 +279,10 @@ def affect_add(
 ) -> dict[str, Any]:
     """Add one or more affects to an existing flaw.
 
+    Delegates to ``affects_bulk_create`` (POST /osidb/api/v2/affects/bulk),
+    which matches OSIM's actual pattern.  Auto-sets ``flaw`` and ``embargoed``
+    on each affect if not already present.
+
     Args:
         flaw_id: Flaw UUID (required). Must be the internal UUID, not a CVE id.
         affects: List of affect dicts, each with ``ps_update_stream`` (required),
@@ -291,25 +297,12 @@ def affect_add(
     except Exception as exc:
         return _error_response(exc)
 
-    created: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
-
-    for i, affect in enumerate(affects):
+    for affect in affects:
         affect["flaw"] = flaw_id
         if "embargoed" not in affect:
             affect["embargoed"] = flaw_embargoed
-        try:
-            result = session.affects.create(affect)
-            created.append(to_jsonable(result))
-        except Exception as exc:
-            detail = http_error_payload(exc) if isinstance(exc, requests.RequestException) else str(exc)
-            errors.append({"index": i, "affect": affect, "error": detail})
 
-    out: dict[str, Any] = {"ok": True, "created": created}
-    if errors:
-        out["partial"] = True
-        out["errors"] = errors
-    return out
+    return affects_bulk_create(affects)
 
 
 def affect_remove(
@@ -317,27 +310,13 @@ def affect_remove(
 ) -> dict[str, Any]:
     """Remove one or more affects by UUID.
 
+    Delegates to ``affects_bulk_delete`` (DELETE /osidb/api/v2/affects/bulk),
+    which matches OSIM's actual pattern.
+
     Args:
         affect_uuids: List of affect UUID strings to delete.
     """
-    session = get_session()
-
-    deleted: list[str] = []
-    errors: list[dict[str, Any]] = []
-
-    for uuid in affect_uuids:
-        try:
-            session.affects.delete(uuid)
-            deleted.append(uuid)
-        except Exception as exc:
-            detail = http_error_payload(exc) if isinstance(exc, requests.RequestException) else str(exc)
-            errors.append({"affect_uuid": uuid, "error": detail})
-
-    out: dict[str, Any] = {"ok": True, "deleted": deleted}
-    if errors:
-        out["partial"] = True
-        out["errors"] = errors
-    return out
+    return affects_bulk_delete(affect_uuids)
 
 
 # ---------------------------------------------------------------------------
@@ -600,5 +579,461 @@ def tracker_file(
             "affect_uuids": affect_uuids,
         })
         return {"ok": True, "trackers": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_comment_create
+# ---------------------------------------------------------------------------
+
+def flaw_comment_create(
+    flaw_id: str,
+    text: str,
+    *,
+    creator: str | None = None,
+    is_private: bool = False,
+) -> dict[str, Any]:
+    """Create a comment on a flaw (POST /osidb/api/v1/flaws/{id}/comments).
+
+    Auto-fetches the flaw's embargoed status to set the correct value on the
+    comment payload.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id (required).
+        text: Comment body text (required).
+        creator: Comment author identifier (e.g. Jira username).
+            If omitted, defaults to the authenticated user.
+        is_private: Whether the comment is private (default False).
+    """
+    session = get_session()
+
+    try:
+        flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
+        flaw_embargoed = getattr(flaw, "embargoed", False)
+    except Exception as exc:
+        return _error_response(exc)
+
+    comment_data: dict[str, Any] = {
+        "text": text,
+        "embargoed": flaw_embargoed,
+        "is_private": is_private,
+    }
+    if creator is not None:
+        comment_data["creator"] = creator
+
+    try:
+        result = session.flaws.comments.create(comment_data, flaw_id)
+        return {"ok": True, "comment": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_label_add / flaw_label_remove
+# ---------------------------------------------------------------------------
+
+def flaw_label_add(
+    flaw_id: str,
+    label: str,
+    *,
+    state: str | None = None,
+    contributor: str | None = None,
+    label_type: str | None = None,
+) -> dict[str, Any]:
+    """Add a collaborator label to a flaw (POST /osidb/api/v1/flaws/{id}/labels).
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        label: Label name (required).
+        state: Label state (NEW, REQ, DONE, SKIP). Default NEW.
+        contributor: Contributor name.
+        label_type: Label type (alias, context_based).
+    """
+    from osidb_bindings.bindings.python_client.models.flaw_collaborator_post_request import (
+        FlawCollaboratorPostRequest,
+    )
+
+    try:
+        flaw_uuid = UUID(str(flaw_id).strip())
+    except ValueError:
+        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
+
+    kw: dict[str, Any] = {"label": label}
+    if state:
+        from osidb_bindings.bindings.python_client.models.state_enum import StateEnum
+        kw["state"] = StateEnum(state)
+    if contributor:
+        kw["contributor"] = contributor
+    if label_type:
+        from osidb_bindings.bindings.python_client.models.flaw_collaborator_post_type_enum import (
+            FlawCollaboratorPostTypeEnum,
+        )
+        kw["type_"] = FlawCollaboratorPostTypeEnum(label_type)
+
+    body = FlawCollaboratorPostRequest(**kw)
+
+    try:
+        client = get_session().get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_labels_create,
+        )
+        r = osidb_api_v1_flaws_labels_create.sync_detailed(
+            flaw_uuid, client=client, body=body,
+        )
+        if r.parsed is None:
+            return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
+        return {"ok": True, "label": to_jsonable(r.parsed.to_dict())}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+def flaw_label_remove(
+    flaw_id: str,
+    label_id: str,
+) -> dict[str, Any]:
+    """Remove a label from a flaw (DELETE /osidb/api/v1/flaws/{id}/labels/{id}).
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        label_id: Label ID to delete (required).
+    """
+    try:
+        flaw_uuid = UUID(str(flaw_id).strip())
+    except ValueError:
+        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
+
+    try:
+        client = get_session().get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_labels_destroy,
+        )
+        r = osidb_api_v1_flaws_labels_destroy.sync_detailed(
+            flaw_uuid, label_id, client=client,
+        )
+        return {"ok": True, "deleted": label_id}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_incident_request
+# ---------------------------------------------------------------------------
+
+def flaw_incident_request(
+    flaw_id: str,
+    kind: str,
+    comment: str,
+) -> dict[str, Any]:
+    """Create an incident request on a flaw (POST /osidb/api/v1/flaws/{id}/incident-requests).
+
+    Args:
+        flaw_id: Flaw CVE id or UUID (required).
+        kind: Request kind: MAJOR_INCIDENT_REQUESTED, MINOR_INCIDENT_REQUESTED,
+              or EXPLOITS_KEV_REQUESTED (required).
+        comment: Justification comment (required).
+    """
+    from osidb_bindings.bindings.python_client.models.incident_request_request import (
+        IncidentRequestRequest,
+    )
+    from osidb_bindings.bindings.python_client.models.kind_enum import KindEnum
+
+    body = IncidentRequestRequest(comment=comment, kind=KindEnum(kind))
+
+    try:
+        client = get_session().get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_incident_requests_create,
+        )
+        r = osidb_api_v1_flaws_incident_requests_create.sync_detailed(
+            flaw_id, client=client, body=body,
+        )
+        if r.parsed is None:
+            return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
+        return {"ok": True, "incident_request": to_jsonable(r.parsed.to_dict())}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_acknowledgment_update
+# ---------------------------------------------------------------------------
+
+def flaw_acknowledgment_update(
+    flaw_id: str,
+    acknowledgment_id: str,
+    *,
+    name: str | None = None,
+    affiliation: str | None = None,
+    from_upstream: bool | None = None,
+) -> dict[str, Any]:
+    """Update an acknowledgment on a flaw (PUT /osidb/api/v1/flaws/{id}/acknowledgments/{id}).
+
+    Auto-fetches the current acknowledgment to merge updates.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id (required).
+        acknowledgment_id: Acknowledgment UUID (required).
+        name: Acknowledged person/org name.
+        affiliation: Affiliation.
+        from_upstream: Whether the acknowledgment comes from upstream.
+    """
+    session = get_session()
+
+    try:
+        current = session.flaws.acknowledgments.retrieve(flaw_id, acknowledgment_id)
+    except Exception as exc:
+        return _error_response(exc)
+
+    data: dict[str, Any] = {}
+    for field in ("name", "affiliation", "from_upstream", "embargoed"):
+        val = getattr(current, field, None)
+        if val is not None:
+            data[field] = to_jsonable(val)
+    data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+
+    if name is not None:
+        data["name"] = name
+    if affiliation is not None:
+        data["affiliation"] = affiliation
+    if from_upstream is not None:
+        data["from_upstream"] = from_upstream
+
+    try:
+        result = session.flaws.acknowledgments.update(flaw_id, acknowledgment_id, data)
+        return {"ok": True, "acknowledgment": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_reference_update
+# ---------------------------------------------------------------------------
+
+def flaw_reference_update(
+    flaw_id: str,
+    reference_id: str,
+    *,
+    url: str | None = None,
+    description: str | None = None,
+    reference_type: str | None = None,
+) -> dict[str, Any]:
+    """Update a reference on a flaw (PUT /osidb/api/v1/flaws/{id}/references/{id}).
+
+    Auto-fetches the current reference to merge updates.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id (required).
+        reference_id: Reference UUID (required).
+        url: Reference URL.
+        description: Description text.
+        reference_type: ARTICLE, UPSTREAM, or EXTERNAL.
+    """
+    session = get_session()
+
+    try:
+        current = session.flaws.references.retrieve(flaw_id, reference_id)
+    except Exception as exc:
+        return _error_response(exc)
+
+    data: dict[str, Any] = {}
+    for field in ("url", "description", "type", "embargoed"):
+        val = getattr(current, field, None)
+        if val is not None:
+            data[field] = to_jsonable(val)
+    data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+
+    if url is not None:
+        data["url"] = url
+    if description is not None:
+        data["description"] = description
+    if reference_type is not None:
+        data["type"] = reference_type
+
+    try:
+        result = session.flaws.references.update(flaw_id, reference_id, data)
+        return {"ok": True, "reference": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_cvss_update
+# ---------------------------------------------------------------------------
+
+def flaw_cvss_update(
+    flaw_id: str,
+    cvss_score_id: str,
+    *,
+    vector: str | None = None,
+    comment: str | None = None,
+    cvss_version: str | None = None,
+    issuer: str | None = None,
+) -> dict[str, Any]:
+    """Update a CVSS score on a flaw (PUT /osidb/api/v1/flaws/{id}/cvss_scores/{id}).
+
+    Auto-fetches the current score to merge updates.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id (required).
+        cvss_score_id: CVSS score UUID (required).
+        vector: CVSS vector string.
+        comment: Score comment.
+        cvss_version: V3 or V4.
+        issuer: Score issuer (default RH).
+    """
+    session = get_session()
+
+    try:
+        current = session.flaws.cvss_scores.retrieve(
+            flaw_id, cvss_score_id, api_version="v1",
+        )
+    except Exception as exc:
+        return _error_response(exc)
+
+    data: dict[str, Any] = {}
+    for field in ("vector", "comment", "cvss_version", "issuer", "embargoed"):
+        val = getattr(current, field, None)
+        if val is not None:
+            data[field] = to_jsonable(val)
+    data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+
+    if vector is not None:
+        data["vector"] = vector
+    if comment is not None:
+        data["comment"] = comment
+    if cvss_version is not None:
+        data["cvss_version"] = cvss_version
+    if issuer is not None:
+        data["issuer"] = issuer
+
+    try:
+        result = session.flaws.cvss_scores.update(
+            flaw_id, cvss_score_id, data, api_version="v1",
+        )
+        return {"ok": True, "cvss_score": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_add
+# ---------------------------------------------------------------------------
+
+def flaw_package_version_add(
+    flaw_id: str,
+    package: str,
+    versions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Add package version info to a flaw (POST /osidb/api/v1/flaws/{id}/package_versions).
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        package: Package name (required).
+        versions: List of version dicts, each with ``version`` (str).
+    """
+    from osidb_bindings.bindings.python_client.models.flaw_package_version_post_request import (
+        FlawPackageVersionPostRequest,
+    )
+    from osidb_bindings.bindings.python_client.models.flaw_version_request import (
+        FlawVersionRequest,
+    )
+
+    try:
+        flaw_uuid = UUID(str(flaw_id).strip())
+    except ValueError:
+        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID"}
+
+    session = get_session()
+    try:
+        flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
+        embargoed = getattr(flaw, "embargoed", False)
+    except Exception as exc:
+        return _error_response(exc)
+
+    version_objs = [FlawVersionRequest(**v) for v in versions]
+    body = FlawPackageVersionPostRequest(
+        package=package, versions=version_objs, embargoed=embargoed,
+    )
+
+    try:
+        client = session.get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_package_versions_create,
+        )
+        r = osidb_api_v1_flaws_package_versions_create.sync_detailed(
+            flaw_uuid, client=client, body=body,
+        )
+        if r.parsed is None:
+            return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
+        return {"ok": True, "package_version": to_jsonable(r.parsed.to_dict())}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# affects_bulk_create / affects_bulk_update / affects_bulk_delete
+# ---------------------------------------------------------------------------
+
+def affects_bulk_create(
+    affects: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Bulk-create affects (POST /osidb/api/v2/affects/bulk).
+
+    Args:
+        affects: List of affect dicts, each with at minimum ``flaw`` (UUID),
+                 ``ps_module``, ``ps_component``, ``affectedness``, ``embargoed``.
+    """
+    session = get_session()
+    try:
+        result = session.affects.bulk_create(affects)
+        return {"ok": True, "created": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+def affects_bulk_update(
+    affects: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Bulk-update affects (PUT /osidb/api/v2/affects/bulk).
+
+    Args:
+        affects: List of affect dicts. Each must include ``uuid`` and ``updated_dt``
+                 for optimistic concurrency, plus any fields to change.
+    """
+    session = get_session()
+    try:
+        result = session.affects.bulk_update(affects)
+        return {"ok": True, "updated": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+def affects_bulk_delete(
+    affect_uuids: list[str],
+) -> dict[str, Any]:
+    """Bulk-delete affects (DELETE /osidb/api/v2/affects/bulk).
+
+    Uses raw HTTP because osidb-bindings does not expose bulk_delete on
+    session.affects (blocked by OSIDB-2996) and the generated client's
+    bulk_destroy endpoint omits the request body.
+
+    Args:
+        affect_uuids: List of affect UUID strings to delete.
+    """
+    session = get_session()
+    client = session.get_client_with_new_access_token()
+
+    try:
+        resp = requests.delete(
+            f"{client.base_url}/osidb/api/v2/affects/bulk",
+            json=affect_uuids,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
+        return {"ok": True, "deleted": affect_uuids}
     except Exception as exc:
         return _error_response(exc)
