@@ -16,6 +16,11 @@ _FLAW_FIELDS = (
     "unembargo_dt", "mitigation",
 )
 
+_AFFECT_FIELDS = (
+    "affectedness", "resolution", "impact", "ps_component", "ps_module",
+    "ps_update_stream", "purl", "delegated_resolution",
+)
+
 
 def _error_response(exc: BaseException) -> dict[str, Any]:
     if isinstance(exc, requests.RequestException):
@@ -440,5 +445,157 @@ def flaw_reference_remove(
     try:
         session.flaws.references.delete(flaw_id, reference_id)
         return {"ok": True, "deleted": reference_id}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_cvss_add / flaw_cvss_remove
+# ---------------------------------------------------------------------------
+
+def flaw_cvss_add(
+    flaw_id: str,
+    cvss_scores: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Add CVSS score(s) to an existing flaw.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id (required).
+        cvss_scores: List of dicts, each with ``cvss_version`` (V3 or V4),
+            ``vector`` (str, required), optional ``comment`` (str),
+            optional ``issuer`` (str, default RH).
+    """
+    session = get_session()
+
+    try:
+        flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
+        flaw_embargoed = getattr(flaw, "embargoed", False)
+    except Exception as exc:
+        return _error_response(exc)
+
+    created, errors = _create_subresources(
+        session.flaws.cvss_scores,
+        flaw_id,
+        cvss_scores,
+        flaw_embargoed,
+        "cvss_score",
+        api_version="v1",
+    )
+    out: dict[str, Any] = {"ok": True, "created": created}
+    if errors:
+        out["partial"] = True
+        out["errors"] = errors
+    return out
+
+
+def flaw_cvss_remove(
+    flaw_id: str,
+    cvss_score_id: str,
+) -> dict[str, Any]:
+    """Remove a CVSS score from a flaw.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id.
+        cvss_score_id: CVSS score UUID to delete.
+    """
+    session = get_session()
+    try:
+        session.flaws.cvss_scores.delete(flaw_id, cvss_score_id, api_version="v1")
+        return {"ok": True, "deleted": cvss_score_id}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# affect_update
+# ---------------------------------------------------------------------------
+
+def affect_update(
+    affect_uuid: str,
+    affectedness: str | None = None,
+    resolution: str | None = None,
+    impact: str | None = None,
+    ps_component: str | None = None,
+    purl: str | None = None,
+    delegated_resolution: str | None = None,
+) -> dict[str, Any]:
+    """Update an existing affect (PUT /osidb/api/v2/affects/{uuid}).
+
+    Retrieves the current affect first to obtain ``updated_dt`` (optimistic
+    concurrency) and current field values, then merges caller-provided fields
+    over the existing data before issuing the PUT.
+
+    Args:
+        affect_uuid: Affect UUID (required).
+        affectedness: AFFECTED, NOT_AFFECTED, or NEW.
+        resolution: FIX, DEFER, WONTFIX, OOSS, DELEGATED, or empty.
+        impact: Override severity for this specific affect.
+        ps_component: Product stream component name.
+        purl: Package URL string.
+        delegated_resolution: Delegated resolution value.
+    """
+    session = get_session()
+
+    try:
+        current = session.affects.retrieve(affect_uuid)
+    except Exception as exc:
+        return _error_response(exc)
+
+    affect_data: dict[str, Any] = {}
+    for field in _AFFECT_FIELDS:
+        current_val = getattr(current, field, None)
+        if current_val is not None:
+            affect_data[field] = to_jsonable(current_val)
+
+    overrides = {
+        "affectedness": affectedness,
+        "resolution": resolution,
+        "impact": impact,
+        "ps_component": ps_component,
+        "purl": purl,
+        "delegated_resolution": delegated_resolution,
+    }
+    for k, v in overrides.items():
+        if v is not None:
+            affect_data[k] = v
+
+    affect_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+    affect_data["flaw"] = to_jsonable(getattr(current, "flaw", None))
+    affect_data["embargoed"] = getattr(current, "embargoed", False)
+
+    try:
+        result = session.affects.update(affect_uuid, affect_data)
+        return {"ok": True, "affect": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# tracker_file
+# ---------------------------------------------------------------------------
+
+def tracker_file(
+    flaw_id: str,
+    affect_uuids: list[str],
+) -> dict[str, Any]:
+    """File trackers (Jira/Bugzilla) for one or more affects.
+
+    Creates tracker filings for the specified affects via
+    POST /trackers/api/file.
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        affect_uuids: List of affect UUIDs to create trackers for (required).
+
+    Returns:
+        JSON dict with ``ok`` and created tracker details.
+    """
+    session = get_session()
+    try:
+        result = session.trackers.file({
+            "flaw_uuids": [flaw_id],
+            "affect_uuids": affect_uuids,
+        })
+        return {"ok": True, "trackers": to_jsonable(result)}
     except Exception as exc:
         return _error_response(exc)

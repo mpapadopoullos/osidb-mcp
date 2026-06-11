@@ -177,6 +177,7 @@ def create_server(settings: Settings) -> FastMCP:
 
     if is_readwrite:
         from osidb_mcp import tools_write
+        from osidb_mcp import tools_workflow
 
         mcp.tool(
             name="flaw_create",
@@ -244,5 +245,78 @@ def create_server(settings: Settings) -> FastMCP:
                 "(DELETE /osidb/api/v1/flaws/{id}/references/{sub_id})."
             ),
         )(tools_write.flaw_reference_remove)
+
+        mcp.tool(
+            name="flaw_cvss_add",
+            description=(
+                "Add CVSS score(s) to an existing flaw "
+                "(POST /osidb/api/v1/flaws/{id}/cvss_scores). "
+                "Each score needs ``cvss_version`` (V3 or V4) and ``vector``."
+            ),
+        )(tools_write.flaw_cvss_add)
+
+        mcp.tool(
+            name="flaw_cvss_remove",
+            description=(
+                "Remove a CVSS score from a flaw by UUID "
+                "(DELETE /osidb/api/v1/flaws/{id}/cvss_scores/{sub_id})."
+            ),
+        )(tools_write.flaw_cvss_remove)
+
+        mcp.tool(
+            name="affect_update",
+            description=(
+                "Update fields on an existing affect (PUT /osidb/api/v2/affects/{uuid}). "
+                "Auto-fetches the current affect for optimistic concurrency. "
+                "Only provided fields are changed; others keep current values."
+            ),
+        )(tools_write.affect_update)
+
+        mcp.tool(
+            name="tracker_file",
+            description=(
+                "File Jira/Bugzilla trackers for one or more affects "
+                "(POST /trackers/api/file). Provide the flaw UUID and "
+                "a list of affect UUIDs to create trackers for."
+            ),
+        )(tools_write.tracker_file)
+
+        mcp.tool(
+            name="flaw_promote",
+            description=(
+                "Promote a flaw to the next workflow state "
+                "(POST /osidb/api/{version}/flaws/{id}/promote). "
+                "States: NEW -> TRIAGE -> PRE_SECONDARY_ASSESSMENT -> "
+                "SECONDARY_ASSESSMENT -> DONE. Returns 400 if prerequisites are not met."
+            ),
+        )(tools_workflow.flaw_promote)
+
+        mcp.tool(
+            name="flaw_reject",
+            description=(
+                "Reject a flaw, moving it to REJECTED state "
+                "(POST /osidb/api/{version}/flaws/{id}/reject). "
+                "Requires a reason. Only from NEW or TRIAGE states."
+            ),
+        )(tools_workflow.flaw_reject)
+
+        mcp.tool(
+            name="flaw_reset",
+            description=(
+                "Reset a flaw back to NEW state "
+                "(POST /osidb/api/{version}/flaws/{id}/reset). "
+                "Can be called from NEW, TRIAGE, or DONE states."
+            ),
+        )(tools_workflow.flaw_reset)
+
+        mcp.tool(
+            name="flaw_revert",
+            description=(
+                "Revert a flaw to its previous workflow state "
+                "(POST /osidb/api/{version}/flaws/{id}/revert). "
+                "Moves one step backward: DONE -> SECONDARY_ASSESSMENT -> "
+                "PRE_SECONDARY_ASSESSMENT -> TRIAGE -> NEW."
+            ),
+        )(tools_workflow.flaw_revert)
 
     return mcp
