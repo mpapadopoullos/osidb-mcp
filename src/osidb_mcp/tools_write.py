@@ -553,6 +553,109 @@ def affect_update(
 
 
 # ---------------------------------------------------------------------------
+# affect_update_bulk
+# ---------------------------------------------------------------------------
+
+def affect_update_bulk(
+    affects: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Update multiple affects in one bulk call (PUT /osidb/api/v2/affects/bulk).
+
+    Fetches all affects in a single list request via
+    ``/osidb/api/v2/affects?uuid__in=...`` to obtain ``updated_dt`` for
+    optimistic concurrency, merges caller-provided field overrides, then
+    sends one bulk PUT.
+
+    Args:
+        affects: List of dicts, each with ``affect_uuid`` (required) plus any
+                 fields to change: ``affectedness``, ``resolution``, ``impact``,
+                 ``ps_component``, ``purl``, ``delegated_resolution``.
+    """
+    if not affects:
+        return {"ok": True, "updated": [], "detail": "nothing to update"}
+
+    fetch_errors: list[dict[str, Any]] = []
+    valid_specs: list[dict[str, Any]] = []
+    uuids: list[str] = []
+
+    for spec in affects:
+        affect_uuid = spec.get("affect_uuid")
+        if not affect_uuid:
+            fetch_errors.append({"affect_uuid": None, "error": "missing affect_uuid"})
+        else:
+            valid_specs.append(spec)
+            uuids.append(affect_uuid)
+
+    if not uuids:
+        return {
+            "ok": False,
+            "error": "all_fetches_failed",
+            "fetch_errors": fetch_errors,
+        }
+
+    session = get_session()
+
+    try:
+        list_resp = session.affects.retrieve_list(
+            uuid__in=uuids, limit=len(uuids),
+        )
+    except Exception as exc:
+        return _error_response(exc)
+
+    fetched_by_uuid: dict[str, Any] = {}
+    for affect_obj in list_resp.results:
+        uid = str(getattr(affect_obj, "uuid", ""))
+        if uid:
+            fetched_by_uuid[uid] = affect_obj
+
+    payloads: list[dict[str, Any]] = []
+    for spec in valid_specs:
+        affect_uuid = spec["affect_uuid"]
+        current = fetched_by_uuid.get(affect_uuid)
+        if current is None:
+            fetch_errors.append({
+                "affect_uuid": affect_uuid,
+                "error": f"affect {affect_uuid} not found in list response",
+            })
+            continue
+
+        affect_data: dict[str, Any] = {}
+        for field in _AFFECT_FIELDS:
+            current_val = getattr(current, field, None)
+            if current_val is not None:
+                affect_data[field] = to_jsonable(current_val)
+
+        for k in ("affectedness", "resolution", "impact", "ps_component",
+                   "purl", "delegated_resolution"):
+            v = spec.get(k)
+            if v is not None:
+                affect_data[k] = v
+
+        affect_data["uuid"] = affect_uuid
+        affect_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+        affect_data["flaw"] = to_jsonable(getattr(current, "flaw", None))
+        affect_data["embargoed"] = getattr(current, "embargoed", False)
+
+        payloads.append(affect_data)
+
+    if not payloads:
+        return {
+            "ok": False,
+            "error": "all_fetches_failed",
+            "fetch_errors": fetch_errors,
+        }
+
+    try:
+        result = session.affects.bulk_update(payloads)
+        resp: dict[str, Any] = {"ok": True, "updated": to_jsonable(result)}
+        if fetch_errors:
+            resp["fetch_errors"] = fetch_errors
+        return resp
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
 # tracker_create
 # ---------------------------------------------------------------------------
 

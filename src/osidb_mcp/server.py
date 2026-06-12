@@ -372,6 +372,17 @@ def create_server(settings: Settings) -> FastMCP:
         )(tools_write.affect_update)
 
         mcp.tool(
+            name="affect_update_bulk",
+            description=(
+                "Update multiple affects in one bulk call "
+                "(PUT /osidb/api/v2/affects/bulk). "
+                "Auto-fetches each affect for optimistic concurrency, then "
+                "merges caller-provided field overrides and sends a single bulk PUT. "
+                "Each entry needs ``affect_uuid`` plus optional fields to change."
+            ),
+        )(tools_write.affect_update_bulk)
+
+        mcp.tool(
             name="tracker_create",
             description=(
                 "Create a single tracker (Jira/Bugzilla ticket) for one or more affects "

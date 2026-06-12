@@ -8,6 +8,7 @@ from osidb_mcp.tools_write import (
     affect_add,
     affect_remove,
     affect_update,
+    affect_update_bulk,
     affects_bulk_create,
     affects_bulk_delete,
     affects_bulk_update,
@@ -1563,3 +1564,159 @@ def test_affects_bulk_delete_error(mock_get_session: MagicMock, mock_delete: Mag
     result = affects_bulk_delete(affect_uuids=["bad-uuid"])
 
     assert result["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# affect_update_bulk tests
+# ---------------------------------------------------------------------------
+
+def _mock_list_response(affects):
+    """Build a mock retrieve_list response with .results containing affect objects."""
+    resp = MagicMock()
+    resp.results = affects
+    return resp
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    affect_a = _mock_affect_full(uuid="aaa-111", affectedness="NEW")
+    affect_b = _mock_affect_full(uuid="bbb-222", affectedness="NEW")
+    session.affects.retrieve_list.return_value = _mock_list_response([affect_a, affect_b])
+
+    bulk_result = MagicMock()
+    bulk_result.to_dict.return_value = [
+        {"uuid": "aaa-111", "affectedness": "AFFECTED", "resolution": "FIX"},
+        {"uuid": "bbb-222", "affectedness": "AFFECTED", "resolution": "DEFER"},
+    ]
+    session.affects.bulk_update.return_value = bulk_result
+
+    result = affect_update_bulk(affects=[
+        {"affect_uuid": "aaa-111", "affectedness": "AFFECTED", "resolution": "FIX"},
+        {"affect_uuid": "bbb-222", "affectedness": "AFFECTED", "resolution": "DEFER"},
+    ])
+
+    assert result["ok"] is True
+    assert "fetch_errors" not in result
+    session.affects.retrieve_list.assert_called_once_with(
+        uuid__in=["aaa-111", "bbb-222"], limit=2,
+    )
+    session.affects.bulk_update.assert_called_once()
+    payloads = session.affects.bulk_update.call_args[0][0]
+    assert len(payloads) == 2
+    assert payloads[0]["uuid"] == "aaa-111"
+    assert payloads[0]["affectedness"] == "AFFECTED"
+    assert payloads[0]["resolution"] == "FIX"
+    assert payloads[0]["updated_dt"] == "2026-06-08T14:00:00Z"
+    assert payloads[1]["uuid"] == "bbb-222"
+    assert payloads[1]["resolution"] == "DEFER"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_empty_list(mock_get_session: MagicMock) -> None:
+    result = affect_update_bulk(affects=[])
+
+    assert result["ok"] is True
+    assert result["updated"] == []
+    mock_get_session.assert_not_called()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_partial_not_found(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    affect_a = _mock_affect_full(uuid="aaa-111")
+    session.affects.retrieve_list.return_value = _mock_list_response([affect_a])
+
+    bulk_result = MagicMock()
+    bulk_result.to_dict.return_value = [{"uuid": "aaa-111", "affectedness": "AFFECTED"}]
+    session.affects.bulk_update.return_value = bulk_result
+
+    result = affect_update_bulk(affects=[
+        {"affect_uuid": "aaa-111", "affectedness": "AFFECTED"},
+        {"affect_uuid": "bbb-222", "affectedness": "AFFECTED"},
+    ])
+
+    assert result["ok"] is True
+    assert len(result["fetch_errors"]) == 1
+    assert result["fetch_errors"][0]["affect_uuid"] == "bbb-222"
+    assert "not found" in result["fetch_errors"][0]["error"]
+    session.affects.bulk_update.assert_called_once()
+    payloads = session.affects.bulk_update.call_args[0][0]
+    assert len(payloads) == 1
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_list_request_fails(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve_list.side_effect = requests.ConnectionError("timeout")
+
+    result = affect_update_bulk(affects=[
+        {"affect_uuid": "aaa-111"},
+        {"affect_uuid": "bbb-222"},
+    ])
+
+    assert result["ok"] is False
+    session.affects.bulk_update.assert_not_called()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_all_not_found(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve_list.return_value = _mock_list_response([])
+
+    result = affect_update_bulk(affects=[
+        {"affect_uuid": "aaa-111"},
+        {"affect_uuid": "bbb-222"},
+    ])
+
+    assert result["ok"] is False
+    assert result["error"] == "all_fetches_failed"
+    assert len(result["fetch_errors"]) == 2
+    session.affects.bulk_update.assert_not_called()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_put_fails(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    affect = _mock_affect_full()
+    session.affects.retrieve_list.return_value = _mock_list_response([affect])
+
+    resp = MagicMock()
+    resp.status_code = 409
+    resp.text = "Conflict"
+    session.affects.bulk_update.side_effect = requests.HTTPError(response=resp)
+
+    result = affect_update_bulk(affects=[
+        {"affect_uuid": "bbb58a80-dd9c-43dd-ba19-61fa88a66714", "affectedness": "AFFECTED"},
+    ])
+
+    assert result["ok"] is False
+    assert result["status_code"] == 409
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_missing_uuid(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    affect_a = _mock_affect_full(uuid="aaa-111")
+    session.affects.retrieve_list.return_value = _mock_list_response([affect_a])
+
+    bulk_result = MagicMock()
+    bulk_result.to_dict.return_value = [{"uuid": "aaa-111"}]
+    session.affects.bulk_update.return_value = bulk_result
+
+    result = affect_update_bulk(affects=[
+        {"affectedness": "AFFECTED"},
+        {"affect_uuid": "aaa-111", "affectedness": "AFFECTED"},
+    ])
+
+    assert result["ok"] is True
+    assert len(result["fetch_errors"]) == 1
+    assert result["fetch_errors"][0]["affect_uuid"] is None
+    session.affects.retrieve_list.assert_called_once_with(
+        uuid__in=["aaa-111"], limit=1,
+    )
+    payloads = session.affects.bulk_update.call_args[0][0]
+    assert len(payloads) == 1
