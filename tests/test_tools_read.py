@@ -19,6 +19,7 @@ from osidb_mcp.tools_read import (
     flaw_label_get,
     flaw_package_version_get,
     flaw_reference_get,
+    tracker_suggestions,
     workflow_get,
     workflows_list,
 )
@@ -360,3 +361,81 @@ def test_workflow_get_verbose(mock_raw: MagicMock) -> None:
     assert result["ok"] is True
     _, kwargs = mock_raw.call_args
     assert kwargs["verbose"] is True
+
+
+# ---------------------------------------------------------------------------
+# tracker_suggestions tests
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_tracker_suggestions_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [
+            {
+                "ps_update_stream": "rhel-9.4.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-1", "embargoed": False},
+            },
+            {
+                "ps_update_stream": "fedora-rawhide",
+                "ps_component": "kernel",
+                "selected": False,
+                "offer": {"acked": False, "selected": False, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-2", "embargoed": False},
+            },
+        ],
+        "not_applicable": [
+            {"uuid": "aff-3", "ps_module": "community-kernel"},
+        ],
+    }
+    session.trackers.file.return_value = suggestions
+
+    result = tracker_suggestions(flaw_id="CVE-2024-1234")
+
+    assert result["ok"] is True
+    assert result["summary"]["total_fileable"] == 2
+    assert result["summary"]["recommended"] == 1
+    assert result["summary"]["not_recommended"] == 1
+    assert result["summary"]["not_applicable"] == 1
+    session.trackers.file.assert_called_once_with(
+        {"flaw_uuids": ["CVE-2024-1234"]},
+        exclude_existing_trackers=True,
+    )
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_tracker_suggestions_exclude_existing_false(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [],
+        "not_applicable": [],
+    }
+    session.trackers.file.return_value = suggestions
+
+    result = tracker_suggestions(flaw_id="CVE-2024-1234", exclude_existing_trackers=False)
+
+    assert result["ok"] is True
+    session.trackers.file.assert_called_once_with(
+        {"flaw_uuids": ["CVE-2024-1234"]},
+        exclude_existing_trackers=False,
+    )
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_tracker_suggestions_http_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = '{"detail": "Flaw not found"}'
+    session.trackers.file.side_effect = requests.HTTPError(response=resp)
+
+    result = tracker_suggestions(flaw_id="nonexistent-uuid")
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404

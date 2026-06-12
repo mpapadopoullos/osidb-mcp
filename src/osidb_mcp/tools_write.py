@@ -553,34 +553,177 @@ def affect_update(
 
 
 # ---------------------------------------------------------------------------
-# tracker_file
+# tracker_create
 # ---------------------------------------------------------------------------
 
-def tracker_file(
-    flaw_id: str,
-    affect_uuids: list[str],
-) -> dict[str, Any]:
-    """File trackers (Jira/Bugzilla) for one or more affects.
 
-    Creates tracker filings for the specified affects via
-    POST /trackers/api/file.
+def tracker_create(
+    affect_uuids: list[str],
+    ps_update_stream: str,
+    embargoed: bool,
+    *,
+    sync_to_bz: bool = True,
+) -> dict[str, Any]:
+    """Create a tracker (Jira/Bugzilla ticket) for one or more affects.
+
+    Calls POST /osidb/api/v2/trackers to create the actual tracker record
+    and external ticket in Jira or Bugzilla (determined server-side by stream).
+
+    Use ``tracker_suggestions`` first to identify valid streams and affects.
 
     Args:
-        flaw_id: Flaw UUID (required).
-        affect_uuids: List of affect UUIDs to create trackers for (required).
+        affect_uuids: List of affect UUIDs to attach to this tracker.
+        ps_update_stream: Target update stream (e.g. "rhel-9.4.0.z").
+        embargoed: Whether the flaw is embargoed (controls ACLs).
+        sync_to_bz: Sync flaw to Bugzilla after creation (default True).
+            Set False when batch-filing multiple trackers to avoid redundant
+            BZ syncs; set True on the last call to trigger the final sync.
 
     Returns:
-        JSON dict with ``ok`` and created tracker details.
+        JSON dict with created tracker details (uuid, type, external_system_id).
     """
     session = get_session()
     try:
-        result = session.trackers.file({
-            "flaw_uuids": [flaw_id],
-            "affect_uuids": affect_uuids,
-        })
-        return {"ok": True, "trackers": to_jsonable(result)}
+        form_data: dict[str, Any] = {
+            "affects": affect_uuids,
+            "ps_update_stream": ps_update_stream,
+            "embargoed": embargoed,
+        }
+        if not sync_to_bz:
+            form_data["sync_to_bz"] = False
+
+        result = session.trackers.create(form_data=form_data)
+        return {"ok": True, "tracker": to_jsonable(result)}
     except Exception as exc:
         return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# trackers_bulk_file
+# ---------------------------------------------------------------------------
+
+
+def trackers_bulk_file(
+    flaw_id: str,
+    *,
+    only_selected: bool = True,
+    exclude_existing_trackers: bool = True,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Bulk-file trackers for a flaw based on OSIDB suggestions.
+
+    Two-step process:
+    1. Get suggestions from POST /trackers/api/v2/file
+    2. Create trackers for matching streams via POST /osidb/api/v2/trackers
+
+    Uses sync_to_bz=false on all creations except the last to avoid redundant
+    Bugzilla flaw syncs; the final creation triggers one sync for all.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id.
+        only_selected: If True (default), only file trackers for streams
+            marked as 'selected' by OSIDB (acked, non-community, supported).
+            If False, file for ALL available streams.
+        exclude_existing_trackers: Skip streams that already have trackers.
+        dry_run: If True, return what WOULD be filed without actually filing.
+
+    Returns:
+        JSON dict with filed trackers summary, successes, and failures.
+    """
+    session = get_session()
+
+    try:
+        suggestions = session.trackers.file(
+            {"flaw_uuids": [flaw_id]},
+            exclude_existing_trackers=exclude_existing_trackers,
+        )
+        suggestions_data = to_jsonable(suggestions)
+    except Exception as exc:
+        return _error_response(exc)
+
+    streams = suggestions_data.get("streams_components", [])
+    not_applicable = suggestions_data.get("not_applicable", [])
+
+    if only_selected:
+        to_file = [
+            s for s in streams
+            if s.get("selected") or (s.get("offer") or {}).get("selected")
+        ]
+    else:
+        to_file = streams
+
+    if not to_file:
+        return {
+            "ok": True,
+            "filed": 0,
+            "message": "No streams matched the filing criteria.",
+            "not_applicable_count": len(not_applicable),
+        }
+
+    embargoed = (to_file[0].get("affect") or {}).get("embargoed", False)
+
+    if dry_run:
+        preview = [
+            {
+                "ps_update_stream": s.get("ps_update_stream"),
+                "ps_component": s.get("ps_component"),
+                "affect_uuid": (s.get("affect") or {}).get("uuid"),
+                "selected": s.get("selected", False),
+                "acked": (s.get("offer") or {}).get("acked", False),
+            }
+            for s in to_file
+        ]
+        return {
+            "ok": True,
+            "dry_run": True,
+            "would_file": len(preview),
+            "trackers": preview,
+            "not_applicable_count": len(not_applicable),
+        }
+
+    successes: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+
+    for i, stream in enumerate(to_file):
+        is_last = (i == len(to_file) - 1)
+        affect_uuid = (stream.get("affect") or {}).get("uuid")
+        if not affect_uuid:
+            failures.append({
+                "ps_update_stream": stream.get("ps_update_stream"),
+                "ps_component": stream.get("ps_component"),
+                "error": "Missing affect UUID in suggestion data",
+            })
+            continue
+
+        form_data: dict[str, Any] = {
+            "affects": [affect_uuid],
+            "ps_update_stream": stream["ps_update_stream"],
+            "embargoed": embargoed,
+        }
+        if not is_last:
+            form_data["sync_to_bz"] = False
+
+        try:
+            result = session.trackers.create(form_data=form_data)
+            successes.append({
+                "ps_update_stream": stream.get("ps_update_stream"),
+                "ps_component": stream.get("ps_component"),
+                "tracker": to_jsonable(result),
+            })
+        except Exception as exc:
+            failures.append({
+                "ps_update_stream": stream.get("ps_update_stream"),
+                "ps_component": stream.get("ps_component"),
+                "error": str(exc),
+            })
+
+    return {
+        "ok": len(failures) == 0,
+        "filed": len(successes),
+        "failed": len(failures),
+        "successes": successes,
+        "failures": failures if failures else None,
+    }
 
 
 # ---------------------------------------------------------------------------

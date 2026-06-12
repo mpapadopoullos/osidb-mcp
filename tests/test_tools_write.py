@@ -27,7 +27,8 @@ from osidb_mcp.tools_write import (
     flaw_reference_remove,
     flaw_reference_update,
     flaw_update,
-    tracker_file,
+    tracker_create,
+    trackers_bulk_file,
 )
 
 
@@ -621,41 +622,280 @@ def test_affect_update_put_fails(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 @patch("osidb_mcp.tools_write.get_session")
-def test_tracker_file_success(mock_get_session: MagicMock) -> None:
+def test_tracker_create_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
     tracker_result = MagicMock()
     tracker_result.to_dict.return_value = {
-        "trackers": [{"uuid": "trk-1", "type": "JIRA"}],
+        "uuid": "trk-1",
+        "type": "JIRA",
+        "external_system_id": "RHEL-12345",
+        "ps_update_stream": "rhel-9.4.0.z",
     }
-    session.trackers.file.return_value = tracker_result
+    session.trackers.create.return_value = tracker_result
 
-    result = tracker_file(
-        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+    result = tracker_create(
         affect_uuids=["bbb58a80-dd9c-43dd-ba19-61fa88a66714"],
+        ps_update_stream="rhel-9.4.0.z",
+        embargoed=False,
     )
 
     assert result["ok"] is True
-    session.trackers.file.assert_called_once_with({
-        "flaw_uuids": ["aaa58a80-dd9c-43dd-ba19-61fa88a66714"],
-        "affect_uuids": ["bbb58a80-dd9c-43dd-ba19-61fa88a66714"],
+    assert result["tracker"]["uuid"] == "trk-1"
+    session.trackers.create.assert_called_once_with(form_data={
+        "affects": ["bbb58a80-dd9c-43dd-ba19-61fa88a66714"],
+        "ps_update_stream": "rhel-9.4.0.z",
+        "embargoed": False,
     })
 
 
 @patch("osidb_mcp.tools_write.get_session")
-def test_tracker_file_http_error(mock_get_session: MagicMock) -> None:
+def test_tracker_create_with_sync_to_bz_false(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    tracker_result = MagicMock()
+    tracker_result.to_dict.return_value = {"uuid": "trk-2", "type": "JIRA"}
+    session.trackers.create.return_value = tracker_result
+
+    result = tracker_create(
+        affect_uuids=["bbb58a80-dd9c-43dd-ba19-61fa88a66714"],
+        ps_update_stream="rhel-9.4.0.z",
+        embargoed=False,
+        sync_to_bz=False,
+    )
+
+    assert result["ok"] is True
+    session.trackers.create.assert_called_once_with(form_data={
+        "affects": ["bbb58a80-dd9c-43dd-ba19-61fa88a66714"],
+        "ps_update_stream": "rhel-9.4.0.z",
+        "embargoed": False,
+        "sync_to_bz": False,
+    })
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_tracker_create_http_error(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
     resp = MagicMock()
     resp.status_code = 400
     resp.text = '{"detail": "Invalid affect UUID"}'
-    session.trackers.file.side_effect = requests.HTTPError(response=resp)
+    session.trackers.create.side_effect = requests.HTTPError(response=resp)
 
-    result = tracker_file(
-        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+    result = tracker_create(
         affect_uuids=["bad-uuid"],
+        ps_update_stream="rhel-9.4.0.z",
+        embargoed=False,
     )
 
     assert result["ok"] is False
     assert result["status_code"] == 400
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_dry_run(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [
+            {
+                "ps_update_stream": "rhel-9.4.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-1", "embargoed": False},
+            },
+            {
+                "ps_update_stream": "rhel-8.10.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-2", "embargoed": False},
+            },
+            {
+                "ps_update_stream": "fedora-rawhide",
+                "ps_component": "kernel",
+                "selected": False,
+                "offer": {"acked": False, "selected": False, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-3", "embargoed": False},
+            },
+        ],
+        "not_applicable": [
+            {"uuid": "aff-4", "ps_module": "community-kernel"},
+        ],
+    }
+    session.trackers.file.return_value = suggestions
+
+    result = trackers_bulk_file(
+        flaw_id="CVE-2024-1234",
+        dry_run=True,
+    )
+
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert result["would_file"] == 2
+    assert result["not_applicable_count"] == 1
+    assert result["trackers"][0]["ps_update_stream"] == "rhel-9.4.0.z"
+    assert result["trackers"][1]["ps_update_stream"] == "rhel-8.10.0.z"
+    session.trackers.create.assert_not_called()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_executes_with_sync_optimization(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [
+            {
+                "ps_update_stream": "rhel-9.4.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-1", "embargoed": False},
+            },
+            {
+                "ps_update_stream": "rhel-8.10.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-2", "embargoed": False},
+            },
+        ],
+        "not_applicable": [],
+    }
+    session.trackers.file.return_value = suggestions
+
+    tracker1 = MagicMock()
+    tracker1.to_dict.return_value = {"uuid": "trk-1", "type": "JIRA", "external_system_id": "RHEL-111"}
+    tracker2 = MagicMock()
+    tracker2.to_dict.return_value = {"uuid": "trk-2", "type": "JIRA", "external_system_id": "RHEL-222"}
+    session.trackers.create.side_effect = [tracker1, tracker2]
+
+    result = trackers_bulk_file(flaw_id="CVE-2024-1234")
+
+    assert result["ok"] is True
+    assert result["filed"] == 2
+    assert result["failed"] == 0
+
+    calls = session.trackers.create.call_args_list
+    assert len(calls) == 2
+    # First call: sync_to_bz=False
+    assert calls[0].kwargs["form_data"] == {
+        "affects": ["aff-1"],
+        "ps_update_stream": "rhel-9.4.0.z",
+        "embargoed": False,
+        "sync_to_bz": False,
+    }
+    # Last call: sync_to_bz defaults to True (not set explicitly)
+    assert calls[1].kwargs["form_data"] == {
+        "affects": ["aff-2"],
+        "ps_update_stream": "rhel-8.10.0.z",
+        "embargoed": False,
+    }
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_only_selected_false(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [
+            {
+                "ps_update_stream": "rhel-9.4.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-1", "embargoed": False},
+            },
+            {
+                "ps_update_stream": "fedora-rawhide",
+                "ps_component": "kernel",
+                "selected": False,
+                "offer": {"acked": False, "selected": False, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-2", "embargoed": False},
+            },
+        ],
+        "not_applicable": [],
+    }
+    session.trackers.file.return_value = suggestions
+
+    tracker1 = MagicMock()
+    tracker1.to_dict.return_value = {"uuid": "trk-1", "type": "JIRA"}
+    tracker2 = MagicMock()
+    tracker2.to_dict.return_value = {"uuid": "trk-2", "type": "BUGZILLA"}
+    session.trackers.create.side_effect = [tracker1, tracker2]
+
+    result = trackers_bulk_file(flaw_id="CVE-2024-1234", only_selected=False)
+
+    assert result["ok"] is True
+    assert result["filed"] == 2
+    calls = session.trackers.create.call_args_list
+    assert len(calls) == 2
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_no_matching_streams(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [
+            {
+                "ps_update_stream": "fedora-rawhide",
+                "ps_component": "kernel",
+                "selected": False,
+                "offer": {"acked": False, "selected": False, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-1", "embargoed": False},
+            },
+        ],
+        "not_applicable": [
+            {"uuid": "aff-2", "ps_module": "community-kernel"},
+        ],
+    }
+    session.trackers.file.return_value = suggestions
+
+    result = trackers_bulk_file(flaw_id="CVE-2024-1234")
+
+    assert result["ok"] is True
+    assert result["filed"] == 0
+    assert "No streams matched" in result["message"]
+    session.trackers.create.assert_not_called()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_partial_failure(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [
+            {
+                "ps_update_stream": "rhel-9.4.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-1", "embargoed": False},
+            },
+            {
+                "ps_update_stream": "rhel-8.10.0.z",
+                "ps_component": "kernel",
+                "selected": True,
+                "offer": {"acked": True, "selected": True, "eus": False, "aus": False},
+                "affect": {"uuid": "aff-2", "embargoed": False},
+            },
+        ],
+        "not_applicable": [],
+    }
+    session.trackers.file.return_value = suggestions
+
+    tracker1 = MagicMock()
+    tracker1.to_dict.return_value = {"uuid": "trk-1", "type": "JIRA"}
+    session.trackers.create.side_effect = [
+        tracker1,
+        Exception("Server error"),
+    ]
+
+    result = trackers_bulk_file(flaw_id="CVE-2024-1234")
+
+    assert result["ok"] is False
+    assert result["filed"] == 1
+    assert result["failed"] == 1
+    assert result["failures"][0]["ps_update_stream"] == "rhel-8.10.0.z"
 
 
 # ---------------------------------------------------------------------------

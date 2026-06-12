@@ -144,6 +144,15 @@ def create_server(settings: Settings) -> FastMCP:
         ),
     )(tools_read.tracker_get)
     mcp.tool(
+        name="tracker_suggestions",
+        description=(
+            "Get tracker filing suggestions for a flaw (POST /trackers/api/v2/file). "
+            "Returns which streams are recommended for filing (selected=true means "
+            "acked/non-community/supported) and which are not applicable. "
+            "Use before ``tracker_create`` or ``trackers_bulk_file`` to preview."
+        ),
+    )(tools_read.tracker_suggestions)
+    mcp.tool(
         name="labels_list",
         description=(
             "Paginated global OSIDB labels (``GET /labels``). ``extra_query`` allowlisted (typically ``limit``/``offset``)."
@@ -363,13 +372,24 @@ def create_server(settings: Settings) -> FastMCP:
         )(tools_write.affect_update)
 
         mcp.tool(
-            name="tracker_file",
+            name="tracker_create",
             description=(
-                "File Jira/Bugzilla trackers for one or more affects "
-                "(POST /trackers/api/file). Provide the flaw UUID and "
-                "a list of affect UUIDs to create trackers for."
+                "Create a single tracker (Jira/Bugzilla ticket) for one or more affects "
+                "(POST /osidb/api/v2/trackers). Requires affect_uuids, ps_update_stream, "
+                "and embargoed. Use ``tracker_suggestions`` first to identify valid streams. "
+                "Set sync_to_bz=false when batch-filing, true on the last call."
             ),
-        )(tools_write.tracker_file)
+        )(tools_write.tracker_create)
+
+        mcp.tool(
+            name="trackers_bulk_file",
+            description=(
+                "Bulk-file trackers for a flaw. Gets suggestions from OSIDB, filters to "
+                "recommended streams (acked, non-community), and files trackers sequentially "
+                "with sync_to_bz optimization. Use dry_run=true to preview without filing. "
+                "Set only_selected=false to file ALL available streams."
+            ),
+        )(tools_write.trackers_bulk_file)
 
         mcp.tool(
             name="flaw_comment_create",

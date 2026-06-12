@@ -1567,3 +1567,62 @@ def get_pending_exploit_actions(
         return {"ok": True, "report": to_jsonable(r.parsed.to_dict())}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
+
+
+# ---------------------------------------------------------------------------
+# tracker_suggestions
+# ---------------------------------------------------------------------------
+
+
+def tracker_suggestions(
+    flaw_id: str,
+    *,
+    exclude_existing_trackers: bool = True,
+) -> dict[str, Any]:
+    """Get tracker filing suggestions for a flaw (POST /trackers/api/v2/file).
+
+    Returns which streams/components can have trackers filed, which are
+    recommended (``selected=true``, i.e. acked/non-community), and which
+    are not applicable (community, EOL, NOTAFFECTED).
+
+    Use this tool to preview what trackers would be filed before calling
+    ``tracker_create`` or ``trackers_bulk_file``.
+
+    Args:
+        flaw_id: Flaw UUID or CVE id (e.g. "CVE-2024-1234").
+        exclude_existing_trackers: If True (default), only return streams
+            that do not already have trackers filed.
+
+    Returns:
+        JSON dict with:
+        - ``streams_components``: fileable streams with selection flags
+        - ``not_applicable``: affects where trackers cannot be filed
+        - ``summary``: human-readable counts (recommended, available, excluded)
+    """
+    session = get_session()
+    try:
+        result = session.trackers.file(
+            {"flaw_uuids": [flaw_id]},
+            exclude_existing_trackers=exclude_existing_trackers,
+        )
+        data = to_jsonable(result)
+
+        streams = data.get("streams_components", [])
+        not_applicable = data.get("not_applicable", [])
+        recommended = [
+            s for s in streams
+            if s.get("selected") or (s.get("offer") or {}).get("selected")
+        ]
+
+        data["summary"] = {
+            "total_fileable": len(streams),
+            "recommended": len(recommended),
+            "not_recommended": len(streams) - len(recommended),
+            "not_applicable": len(not_applicable),
+        }
+
+        return {"ok": True, **data}
+    except Exception as exc:
+        if isinstance(exc, requests.RequestException):
+            return {"ok": False, **http_error_payload(exc)}
+        return {"ok": False, "error": "osidb_error", "detail": str(exc)}
