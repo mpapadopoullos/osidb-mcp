@@ -945,6 +945,129 @@ def test_comment_create_api_error(mock_get_session: MagicMock) -> None:
 
 
 # ---------------------------------------------------------------------------
+# flaw_comment_create internal (Jira) tests
+# ---------------------------------------------------------------------------
+
+def _jira_settings(**overrides):
+    from osidb_mcp.config import Settings, AccessMode
+
+    defaults = dict(
+        base_url="https://osidb.example.com",
+        auth="kerberos",
+        username=None,
+        password=None,
+        verify_ssl=True,
+        user_agent=None,
+        access_mode=AccessMode.readwrite,
+        jira_url="https://issues.redhat.com",
+        jira_access_token="tok-123",
+        jira_api_email="user@redhat.com",
+    )
+    defaults.update(overrides)
+    return Settings(**defaults)
+
+
+@patch("osidb_mcp.tools_write.requests.post")
+@patch("osidb_mcp.tools_write.current_settings", return_value=_jira_settings())
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_internal_success(
+    mock_get_session: MagicMock,
+    _mock_settings: MagicMock,
+    mock_post: MagicMock,
+) -> None:
+    session = mock_get_session.return_value
+    flaw = _mock_flaw_full(task_key="OSIM-83479")
+    session.flaws.retrieve.return_value = flaw
+
+    resp = MagicMock()
+    resp.status_code = 201
+    resp.json.return_value = {"id": "99001"}
+    resp.raise_for_status.return_value = None
+    mock_post.return_value = resp
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Internal triage note",
+        internal=True,
+    )
+
+    assert result["ok"] is True
+    assert result["jira_comment_id"] == "99001"
+    assert result["jira_issue"] == "OSIM-83479"
+    session.flaws.retrieve.assert_called_once_with("CVE-2026-52719", include_fields="task_key")
+    mock_post.assert_called_once()
+    call_kwargs = mock_post.call_args
+    assert "OSIM-83479" in call_kwargs[1]["url"] if "url" in call_kwargs[1] else "OSIM-83479" in call_kwargs[0][0]
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_internal_no_task_key(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    flaw = _mock_flaw_full(task_key=None)
+    session.flaws.retrieve.return_value = flaw
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Should fail",
+        internal=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "no_jira_task"
+
+
+@patch("osidb_mcp.tools_write.current_settings",
+       return_value=_jira_settings(jira_url=None, jira_access_token=None))
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_internal_missing_jira_config(
+    mock_get_session: MagicMock,
+    _mock_settings: MagicMock,
+) -> None:
+    session = mock_get_session.return_value
+    flaw = _mock_flaw_full(task_key="OSIM-99999")
+    session.flaws.retrieve.return_value = flaw
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Should fail",
+        internal=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "jira_not_configured"
+    assert "JIRA_URL" in result["detail"]
+    assert "JIRA_ACCESS_TOKEN" in result["detail"]
+
+
+@patch("osidb_mcp.tools_write.requests.post")
+@patch("osidb_mcp.tools_write.current_settings", return_value=_jira_settings())
+@patch("osidb_mcp.tools_write.get_session")
+def test_comment_create_internal_jira_error(
+    mock_get_session: MagicMock,
+    _mock_settings: MagicMock,
+    mock_post: MagicMock,
+) -> None:
+    session = mock_get_session.return_value
+    flaw = _mock_flaw_full(task_key="OSIM-83479")
+    session.flaws.retrieve.return_value = flaw
+
+    resp = MagicMock()
+    resp.status_code = 403
+    resp.text = "Forbidden"
+    mock_post.return_value = resp
+    resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
+
+    result = flaw_comment_create(
+        flaw_id="CVE-2026-52719",
+        text="Should fail on Jira",
+        internal=True,
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 403
+
+
+# ---------------------------------------------------------------------------
 # flaw_label_add / flaw_label_remove tests
 # ---------------------------------------------------------------------------
 

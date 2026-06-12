@@ -29,7 +29,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pip-audit>=2.7"]
+dotenv = ["python-dotenv>=1.0"]
+dev = ["pytest>=8.0", "pip-audit>=2.7", "python-dotenv>=1.0"]
 
 [project.scripts]
 osidb-mcp = "osidb_mcp.__main__:main"

@@ -47,6 +47,9 @@ class Settings:
     verify_ssl: bool
     user_agent: str | None
     access_mode: AccessMode
+    jira_url: str | None = None
+    jira_access_token: str | None = None
+    jira_api_email: str | None = None
 
 
 def load_settings() -> Settings:
@@ -73,6 +76,10 @@ def load_settings() -> Settings:
     if ua == "":
         ua = None
 
+    jira_url = os.environ.get("JIRA_URL", "").strip() or None
+    jira_token = os.environ.get("JIRA_ACCESS_TOKEN", "").strip() or None
+    jira_email = os.environ.get("JIRA_API_EMAIL", "").strip() or None
+
     return Settings(
         base_url=base,
         auth=auth,  # type: ignore[arg-type]
@@ -81,4 +88,7 @@ def load_settings() -> Settings:
         verify_ssl=_env_bool("OSIDB_VERIFY_SSL", True),
         user_agent=ua,
         access_mode=_parse_access_mode(),
+        jira_url=jira_url,
+        jira_access_token=jira_token,
+        jira_api_email=jira_email,
     )

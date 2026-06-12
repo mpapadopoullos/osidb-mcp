@@ -10,7 +10,7 @@ import requests
 
 from osidb_mcp.errors import http_error_payload
 from osidb_mcp.serialize import to_jsonable
-from osidb_mcp.session_holder import get_session
+from osidb_mcp.session_holder import current_settings, get_session
 
 _FLAW_FIELDS = (
     "title", "comment_zero", "embargoed", "cve_id", "impact", "components",
@@ -613,26 +613,108 @@ def tracker_file(
 # flaw_comment_create
 # ---------------------------------------------------------------------------
 
+def _post_jira_comment(task_key: str, text: str) -> dict[str, Any]:
+    """Post a comment directly to a Jira issue via REST API v3."""
+    settings = current_settings()
+
+    missing: list[str] = []
+    if not settings.jira_url:
+        missing.append("JIRA_URL")
+    if not settings.jira_access_token:
+        missing.append("JIRA_ACCESS_TOKEN")
+    if not settings.jira_api_email:
+        missing.append("JIRA_API_EMAIL")
+    if missing:
+        return {
+            "ok": False,
+            "error": "jira_not_configured",
+            "detail": f"Missing env vars: {', '.join(missing)}",
+        }
+
+    url = f"{settings.jira_url.rstrip('/')}/rest/api/3/issue/{task_key}/comment"
+    body = {
+        "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": text}],
+                }
+            ],
+        }
+    }
+    headers = {"Content-Type": "application/json"}
+    auth = (settings.jira_api_email, settings.jira_access_token)
+
+    try:
+        import certifi
+
+        ca_bundle = certifi.where()
+    except ImportError:
+        ca_bundle = True  # type: ignore[assignment]
+
+    try:
+        resp = requests.post(
+            url, json=body, headers=headers, auth=auth, timeout=30, verify=ca_bundle
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "ok": True,
+            "jira_comment_id": data.get("id"),
+            "jira_issue": task_key,
+        }
+    except Exception as exc:
+        return _error_response(exc)
+
+
 def flaw_comment_create(
     flaw_id: str,
     text: str,
     *,
     creator: str | None = None,
     is_private: bool = False,
+    internal: bool = False,
 ) -> dict[str, Any]:
     """Create a comment on a flaw (POST /osidb/api/v1/flaws/{id}/comments).
 
     Auto-fetches the flaw's embargoed status to set the correct value on the
     comment payload.
 
+    When ``internal=True``, the comment is posted directly to the flaw's Jira
+    issue instead of going through the OSIDB/Bugzilla comment endpoint.
+    Requires ``JIRA_URL``, ``JIRA_ACCESS_TOKEN``, and ``JIRA_API_EMAIL``
+    env vars.
+
     Args:
         flaw_id: Flaw UUID or CVE id (required).
         text: Comment body text (required).
         creator: Comment author identifier (e.g. Jira username).
             If omitted, defaults to the authenticated user.
+            Ignored when ``internal=True``.
         is_private: Whether the comment is private (default False).
+            Ignored when ``internal=True``.
+        internal: When True, post the comment to the Jira project
+            instead of to OSIDB/Bugzilla (default False).
     """
     session = get_session()
+
+    if internal:
+        try:
+            flaw = session.flaws.retrieve(flaw_id, include_fields="task_key")
+            task_key = getattr(flaw, "task_key", None)
+        except Exception as exc:
+            return _error_response(exc)
+
+        if not task_key:
+            return {
+                "ok": False,
+                "error": "no_jira_task",
+                "detail": "Flaw has no associated Jira issue (task_key is empty)",
+            }
+
+        return _post_jira_comment(task_key, text)
 
     try:
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")

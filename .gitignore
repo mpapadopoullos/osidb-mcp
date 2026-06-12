@@ -9,6 +9,7 @@ dist/
 .claude
 
 # Live OSIDB integration credentials (see live_tests/README.md)
+.env
 .env.live
 .env.live.*
 *.live.env
