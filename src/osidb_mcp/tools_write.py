@@ -21,6 +21,7 @@ _FLAW_FIELDS = (
 _AFFECT_FIELDS = (
     "affectedness", "resolution", "impact", "ps_component", "ps_module",
     "ps_update_stream", "purl", "delegated_resolution",
+    "not_affected_justification",
 )
 
 
@@ -500,6 +501,7 @@ def affect_update(
     ps_component: str | None = None,
     purl: str | None = None,
     delegated_resolution: str | None = None,
+    not_affected_justification: str | None = None,
 ) -> dict[str, Any]:
     """Update an existing affect (PUT /osidb/api/v2/affects/{uuid}).
 
@@ -515,6 +517,10 @@ def affect_update(
         ps_component: Product stream component name.
         purl: Package URL string.
         delegated_resolution: Delegated resolution value.
+        not_affected_justification: Justification when affectedness is
+            NOT_AFFECTED (e.g. VULNERABLE_CODE_NOT_PRESENT,
+            VULNERABLE_CODE_NOT_IN_FINAL_PRODUCT,
+            INLINE_MITIGATIONS_ALREADY_EXIST).
     """
     session = get_session()
 
@@ -536,6 +542,7 @@ def affect_update(
         "ps_component": ps_component,
         "purl": purl,
         "delegated_resolution": delegated_resolution,
+        "not_affected_justification": not_affected_justification,
     }
     for k, v in overrides.items():
         if v is not None:
@@ -569,7 +576,8 @@ def affect_update_bulk(
     Args:
         affects: List of dicts, each with ``affect_uuid`` (required) plus any
                  fields to change: ``affectedness``, ``resolution``, ``impact``,
-                 ``ps_component``, ``purl``, ``delegated_resolution``.
+                 ``ps_component``, ``purl``, ``delegated_resolution``,
+                 ``not_affected_justification``.
     """
     if not affects:
         return {"ok": True, "updated": [], "detail": "nothing to update"}
@@ -626,7 +634,8 @@ def affect_update_bulk(
                 affect_data[field] = to_jsonable(current_val)
 
         for k in ("affectedness", "resolution", "impact", "ps_component",
-                   "purl", "delegated_resolution"):
+                   "purl", "delegated_resolution",
+                   "not_affected_justification"):
             v = spec.get(k)
             if v is not None:
                 affect_data[k] = v

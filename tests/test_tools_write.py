@@ -556,6 +556,7 @@ def _mock_affect_full(**overrides):
         "ps_update_stream": "rhel-9.8.z",
         "purl": "pkg:rpm/redhat/gstreamer1-plugins-bad-free@1.22.12-7.el9_8?arch=src",
         "delegated_resolution": None,
+        "not_affected_justification": "",
         "embargoed": True,
         "updated_dt": "2026-06-08T14:00:00Z",
     }
@@ -588,6 +589,30 @@ def test_affect_update_success(mock_get_session: MagicMock) -> None:
     assert update_data["resolution"] == "FIX"
     assert update_data["ps_component"] == "gstreamer1-plugins-bad-free"
     assert update_data["updated_dt"] == "2026-06-08T14:00:00Z"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_not_affected_justification(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = _mock_affect_full()
+    session.affects.retrieve.return_value = current
+    updated = _mock_affect_full(
+        affectedness="NOT_AFFECTED",
+        not_affected_justification="VULNERABLE_CODE_NOT_PRESENT",
+    )
+    session.affects.update.return_value = updated
+
+    result = affect_update(
+        affect_uuid="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        affectedness="NOT_AFFECTED",
+        not_affected_justification="VULNERABLE_CODE_NOT_PRESENT",
+    )
+
+    assert result["ok"] is True
+    session.affects.update.assert_called_once()
+    update_data = session.affects.update.call_args[0][1]
+    assert update_data["affectedness"] == "NOT_AFFECTED"
+    assert update_data["not_affected_justification"] == "VULNERABLE_CODE_NOT_PRESENT"
 
 
 @patch("osidb_mcp.tools_write.get_session")
@@ -1611,6 +1636,39 @@ def test_affect_update_bulk_success(mock_get_session: MagicMock) -> None:
     assert payloads[0]["updated_dt"] == "2026-06-08T14:00:00Z"
     assert payloads[1]["uuid"] == "bbb-222"
     assert payloads[1]["resolution"] == "DEFER"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_update_bulk_not_affected_justification(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    affect_a = _mock_affect_full(uuid="aaa-111", affectedness="NEW")
+    session.affects.retrieve_list.return_value = _mock_list_response([affect_a])
+
+    bulk_result = MagicMock()
+    bulk_result.to_dict.return_value = [
+        {
+            "uuid": "aaa-111",
+            "affectedness": "NOT_AFFECTED",
+            "not_affected_justification": "VULNERABLE_CODE_NOT_PRESENT",
+        },
+    ]
+    session.affects.bulk_update.return_value = bulk_result
+
+    result = affect_update_bulk(affects=[
+        {
+            "affect_uuid": "aaa-111",
+            "affectedness": "NOT_AFFECTED",
+            "not_affected_justification": "VULNERABLE_CODE_NOT_PRESENT",
+        },
+    ])
+
+    assert result["ok"] is True
+    session.affects.bulk_update.assert_called_once()
+    payloads = session.affects.bulk_update.call_args[0][0]
+    assert len(payloads) == 1
+    assert payloads[0]["affectedness"] == "NOT_AFFECTED"
+    assert payloads[0]["not_affected_justification"] == "VULNERABLE_CODE_NOT_PRESENT"
 
 
 @patch("osidb_mcp.tools_write.get_session")
