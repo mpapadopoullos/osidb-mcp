@@ -7,19 +7,10 @@ from typing import Any
 
 import requests
 
-from uuid import UUID
-
-
-from osidb_mcp.errors import http_error_payload
-from osidb_mcp.resolve import resolve_flaw_uuid
+from osidb_mcp.errors import error_response, http_error_payload
+from osidb_mcp.resolve import parse_uuid_param, resolve_flaw_uuid
 from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import current_settings, get_session
-
-
-def _error_response(exc: BaseException) -> dict[str, Any]:
-    if isinstance(exc, requests.RequestException):
-        return {"ok": False, **http_error_payload(exc)}
-    return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
 _FLAW_FIELDS = (
     "title", "comment_zero", "embargoed", "cve_id", "impact", "components",
@@ -244,7 +235,7 @@ def flaw_update(
     try:
         current = session.flaws.retrieve(flaw_id)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     flaw_data: dict[str, Any] = {}
     for field in _FLAW_FIELDS:
@@ -270,7 +261,7 @@ def flaw_update(
         result = session.flaws.update(flaw_id, flaw_data)
         return {"ok": True, "flaw": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +290,7 @@ def affect_add(
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
         flaw_embargoed = getattr(flaw, "embargoed", False)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     for affect in affects:
         affect["flaw"] = flaw_id
@@ -345,7 +336,7 @@ def flaw_acknowledgment_add(
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
         flaw_embargoed = getattr(flaw, "embargoed", False)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     created, errors = _create_subresources(
         session.flaws.acknowledgments,
@@ -376,7 +367,7 @@ def flaw_acknowledgment_remove(
         session.flaws.acknowledgments.delete(flaw_id, acknowledgment_id)
         return {"ok": True, "deleted": acknowledgment_id}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +392,7 @@ def flaw_reference_add(
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
         flaw_embargoed = getattr(flaw, "embargoed", False)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     created, errors = _create_subresources(
         session.flaws.references,
@@ -432,7 +423,7 @@ def flaw_reference_remove(
         session.flaws.references.delete(flaw_id, reference_id)
         return {"ok": True, "deleted": reference_id}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +448,7 @@ def flaw_cvss_add(
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
         flaw_embargoed = getattr(flaw, "embargoed", False)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     created, errors = _create_subresources(
         session.flaws.cvss_scores,
@@ -489,7 +480,7 @@ def flaw_cvss_remove(
         session.flaws.cvss_scores.delete(flaw_id, cvss_score_id, api_version="v1")
         return {"ok": True, "deleted": cvss_score_id}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -531,7 +522,7 @@ def affect_update(
     try:
         current = session.affects.retrieve(affect_uuid)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     affect_data: dict[str, Any] = {}
     for field in _AFFECT_FIELDS:
@@ -560,7 +551,7 @@ def affect_update(
         result = session.affects.update(affect_uuid, affect_data)
         return {"ok": True, "affect": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -612,7 +603,7 @@ def affect_update_bulk(
             uuid__in=uuids, limit=len(uuids),
         )
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     fetched_by_uuid: dict[str, Any] = {}
     for affect_obj in list_resp.results:
@@ -665,7 +656,7 @@ def affect_update_bulk(
             resp["fetch_errors"] = fetch_errors
         return resp
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -711,7 +702,7 @@ def tracker_create(
         result = session.trackers.create(form_data=form_data)
         return {"ok": True, "tracker": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -751,7 +742,7 @@ def trackers_bulk_file(
     try:
         resolved_id = resolve_flaw_uuid(session, flaw_id)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     try:
         suggestions = session.trackers.file(
@@ -760,7 +751,7 @@ def trackers_bulk_file(
         )
         suggestions_data = to_jsonable(suggestions)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     streams = suggestions_data.get("streams_components", [])
     not_applicable = suggestions_data.get("not_applicable", [])
@@ -904,7 +895,7 @@ def _post_jira_comment(task_key: str, text: str) -> dict[str, Any]:
             "jira_issue": task_key,
         }
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def flaw_comment_create(
@@ -943,7 +934,7 @@ def flaw_comment_create(
             flaw = session.flaws.retrieve(flaw_id, include_fields="task_key")
             task_key = getattr(flaw, "task_key", None)
         except Exception as exc:
-            return _error_response(exc)
+            return error_response(exc)
 
         if not task_key:
             return {
@@ -958,7 +949,7 @@ def flaw_comment_create(
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
         flaw_embargoed = getattr(flaw, "embargoed", False)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     comment_data: dict[str, Any] = {
         "text": text,
@@ -972,7 +963,7 @@ def flaw_comment_create(
         result = session.flaws.comments.create(comment_data, flaw_id)
         return {"ok": True, "comment": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1001,7 +992,7 @@ def flaw_label_add(
     )
 
     try:
-        flaw_uuid = UUID(str(flaw_id).strip())
+        flaw_uuid = parse_uuid_param("flaw_id", flaw_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1031,7 +1022,7 @@ def flaw_label_add(
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
         return {"ok": True, "label": to_jsonable(r.parsed.to_dict())}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def flaw_label_remove(
@@ -1045,7 +1036,7 @@ def flaw_label_remove(
         label_id: Label ID to delete (required).
     """
     try:
-        flaw_uuid = UUID(str(flaw_id).strip())
+        flaw_uuid = parse_uuid_param("flaw_id", flaw_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1059,7 +1050,7 @@ def flaw_label_remove(
         )
         return {"ok": True, "deleted": label_id}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1098,7 +1089,7 @@ def flaw_incident_request(
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
         return {"ok": True, "incident_request": to_jsonable(r.parsed.to_dict())}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1129,7 +1120,7 @@ def flaw_acknowledgment_update(
     try:
         current = session.flaws.acknowledgments.retrieve(flaw_id, acknowledgment_id)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     data: dict[str, Any] = {}
     for field in ("name", "affiliation", "from_upstream", "embargoed"):
@@ -1149,7 +1140,7 @@ def flaw_acknowledgment_update(
         result = session.flaws.acknowledgments.update(flaw_id, acknowledgment_id, data)
         return {"ok": True, "acknowledgment": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1180,7 +1171,7 @@ def flaw_reference_update(
     try:
         current = session.flaws.references.retrieve(flaw_id, reference_id)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     data: dict[str, Any] = {}
     for field in ("url", "description", "type", "embargoed"):
@@ -1200,7 +1191,7 @@ def flaw_reference_update(
         result = session.flaws.references.update(flaw_id, reference_id, data)
         return {"ok": True, "reference": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1237,7 +1228,7 @@ def flaw_cvss_update(
             flaw_id, cvss_score_id, api_version="v1",
         )
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     data: dict[str, Any] = {}
     for field in ("vector", "comment", "cvss_version", "issuer", "embargoed"):
@@ -1268,7 +1259,7 @@ def flaw_cvss_update(
         resp.raise_for_status()
         return {"ok": True, "cvss_score": resp.json()}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1295,7 +1286,7 @@ def flaw_package_version_add(
     )
 
     try:
-        flaw_uuid = UUID(str(flaw_id).strip())
+        flaw_uuid = parse_uuid_param("flaw_id", flaw_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1304,7 +1295,7 @@ def flaw_package_version_add(
         flaw = session.flaws.retrieve(flaw_id, include_fields="embargoed")
         embargoed = getattr(flaw, "embargoed", False)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     version_objs = [FlawVersionRequest(**v) for v in versions]
     body = FlawPackageVersionPostRequest(
@@ -1323,7 +1314,7 @@ def flaw_package_version_add(
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
         return {"ok": True, "package_version": to_jsonable(r.parsed.to_dict())}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1344,7 +1335,7 @@ def affects_bulk_create(
         result = session.affects.bulk_create(affects)
         return {"ok": True, "created": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def affects_bulk_update(
@@ -1361,7 +1352,7 @@ def affects_bulk_update(
         result = session.affects.bulk_update(affects)
         return {"ok": True, "updated": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def affects_bulk_delete(
@@ -1391,7 +1382,7 @@ def affects_bulk_delete(
         resp.raise_for_status()
         return {"ok": True, "deleted": affect_uuids}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1417,7 +1408,7 @@ def flaw_package_version_update(
         versions: Replacement list of version dicts, each with ``version`` (str).
     """
     try:
-        flaw_uuid = UUID(str(flaw_id).strip())
+        flaw_uuid = parse_uuid_param("flaw_id", flaw_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1428,7 +1419,7 @@ def flaw_package_version_update(
             flaw_id=str(flaw_uuid), id=package_version_id,
         )
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     data = current.to_dict()
     data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
@@ -1444,7 +1435,7 @@ def flaw_package_version_update(
         )
         return {"ok": True, "package_version": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def flaw_package_version_remove(
@@ -1458,7 +1449,7 @@ def flaw_package_version_remove(
         package_version_id: Package version UUID to delete.
     """
     try:
-        flaw_uuid = UUID(str(flaw_id).strip())
+        flaw_uuid = parse_uuid_param("flaw_id", flaw_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1469,7 +1460,7 @@ def flaw_package_version_remove(
         )
         return {"ok": True, "deleted": package_version_id}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1499,7 +1490,7 @@ def affect_cvss_score_add(
         embargoed: Override embargo status; auto-fetched from affect if omitted.
     """
     try:
-        UUID(str(affect_id).strip())
+        parse_uuid_param("affect_id", affect_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1520,7 +1511,7 @@ def affect_cvss_score_add(
             affect = session.affects.retrieve(affect_id)
             form_data["embargoed"] = getattr(affect, "embargoed", False)
         except Exception as exc:
-            return _error_response(exc)
+            return error_response(exc)
 
     try:
         result = session.affects.cvss_scores.create(
@@ -1528,7 +1519,7 @@ def affect_cvss_score_add(
         )
         return {"ok": True, "cvss_score": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def affect_cvss_score_remove(
@@ -1542,7 +1533,7 @@ def affect_cvss_score_remove(
         cvss_score_id: CVSS score UUID to delete.
     """
     try:
-        UUID(str(affect_id).strip())
+        parse_uuid_param("affect_id", affect_id)
     except ValueError as e:
         return {"ok": False, "error": "bad_request", "detail": str(e)}
 
@@ -1551,7 +1542,7 @@ def affect_cvss_score_remove(
         session.affects.cvss_scores.delete(affect_id=affect_id, id=cvss_score_id)
         return {"ok": True, "deleted": cvss_score_id}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1577,7 +1568,7 @@ def tracker_update(
     try:
         current = session.trackers.retrieve(tracker_id)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     form_data = current.to_dict()
     form_data.update(fields)
@@ -1586,7 +1577,7 @@ def tracker_update(
         result = session.trackers.update(id=tracker_id, form_data=form_data)
         return {"ok": True, "tracker": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1641,7 +1632,7 @@ def trackers_multi_flaw_file(
         )
         suggestions_data = to_jsonable(suggestions)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     streams = suggestions_data.get("streams_components", [])
     not_applicable = suggestions_data.get("not_applicable", [])
@@ -1770,7 +1761,7 @@ def flaw_save(
     try:
         resolved_id = resolve_flaw_uuid(session, flaw_id)
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
     results: dict[str, Any] = {"ok": True, "flaw_id": resolved_id, "steps": {}}
 
@@ -1833,7 +1824,7 @@ def flaw_save(
         added = []
         label_errors = []
         try:
-            flaw_uuid = UUID(str(resolved_id).strip())
+            flaw_uuid = parse_uuid_param("flaw_id", resolved_id)
         except ValueError as e:
             results["ok"] = False
             results["steps"]["labels_added"] = {"ok": False, "error": str(e)}
@@ -1872,7 +1863,7 @@ def flaw_save(
         removed = []
         label_errors = []
         try:
-            flaw_uuid = UUID(str(resolved_id).strip())
+            flaw_uuid = parse_uuid_param("flaw_id", resolved_id)
         except ValueError as e:
             results["ok"] = False
             results["steps"]["labels_removed"] = {"ok": False, "error": str(e)}

@@ -7,15 +7,9 @@ from typing import Any
 
 import requests
 
-from osidb_mcp.errors import http_error_payload
+from osidb_mcp.errors import error_response
 from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import get_session
-
-
-def _error_response(exc: BaseException) -> dict[str, Any]:
-    if isinstance(exc, requests.RequestException):
-        return {"ok": False, **http_error_payload(exc)}
-    return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
 
 def flaw_promote(flaw_id: str) -> dict[str, Any]:
@@ -38,7 +32,7 @@ def flaw_promote(flaw_id: str) -> dict[str, Any]:
         result = session.flaws.promote(flaw_id)
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
@@ -58,7 +52,7 @@ def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
         result = session.flaws.reject(flaw_id, {"reason": reason})
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def flaw_reset(flaw_id: str) -> dict[str, Any]:
@@ -77,7 +71,7 @@ def flaw_reset(flaw_id: str) -> dict[str, Any]:
         result = session.flaws.reset(flaw_id)
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def flaw_revert(flaw_id: str) -> dict[str, Any]:
@@ -99,7 +93,7 @@ def flaw_revert(flaw_id: str) -> dict[str, Any]:
         result = session.flaws.revert(flaw_id)
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)
 
 
 def workflow_adjust(flaw_id: str) -> dict[str, Any]:
@@ -125,4 +119,4 @@ def workflow_adjust(flaw_id: str) -> dict[str, Any]:
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
         return {"ok": True, "classification": to_jsonable(r.parsed.to_dict())}
     except Exception as exc:
-        return _error_response(exc)
+        return error_response(exc)

@@ -41,7 +41,7 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workfl
 )
 
 from osidb_mcp.errors import http_error_payload
-from osidb_mcp.resolve import resolve_flaw_uuid
+from osidb_mcp.resolve import parse_uuid_param, resolve_flaw_uuid
 from osidb_mcp.query_filters import (
     AFFECTS_EXTRA_KEYS,
     AFFECT_CVSS_SCORES_EXTRA_KEYS,
@@ -92,11 +92,7 @@ def _attach_flaw_list_identity_hint(body: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def _parse_uuid_param(name: str, value: str) -> UUID:
-    try:
-        return UUID(str(value).strip())
-    except ValueError as e:
-        raise ValueError(f"{name} must be a UUID string") from e
+_parse_uuid_param = parse_uuid_param
 
 
 def _parse_dt(value: str | None) -> datetime.datetime | None:
@@ -700,112 +696,36 @@ def trackers_list(
         return {"ok": False, **http_error_payload(e)}
 
 
-def flaw_comments_list(
-    flaw_id: str,
-    *,
-    limit: int = DEFAULT_LIST_LIMIT,
-    offset: int = 0,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    lim = clamp_limit(limit)
-    off = clamp_offset(offset)
-    try:
-        resp = get_session().flaws.comments.retrieve_list(
-            flaw_id, api_version=api_version, limit=lim, offset=off,
-        )
-        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
+def _make_flaw_subresource_list(accessor_name: str):
+    """Factory for flaw sub-resource list functions (comments, references, etc.)."""
+    def _list_fn(
+        flaw_id: str,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
+        api_version: str | None = None,
+    ) -> dict[str, Any]:
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        try:
+            accessor = getattr(get_session().flaws, accessor_name)
+            resp = accessor.retrieve_list(
+                flaw_id, api_version=api_version, limit=lim, offset=off,
+            )
+            return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
+        except requests.RequestException as e:
+            return {"ok": False, **http_error_payload(e)}
+    _list_fn.__name__ = f"flaw_{accessor_name}_list"
+    _list_fn.__qualname__ = f"flaw_{accessor_name}_list"
+    return _list_fn
 
 
-def flaw_references_list(
-    flaw_id: str,
-    *,
-    limit: int = DEFAULT_LIST_LIMIT,
-    offset: int = 0,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    lim = clamp_limit(limit)
-    off = clamp_offset(offset)
-    try:
-        resp = get_session().flaws.references.retrieve_list(
-            flaw_id, api_version=api_version, limit=lim, offset=off,
-        )
-        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_cvss_scores_list(
-    flaw_id: str,
-    *,
-    limit: int = DEFAULT_LIST_LIMIT,
-    offset: int = 0,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    lim = clamp_limit(limit)
-    off = clamp_offset(offset)
-    try:
-        resp = get_session().flaws.cvss_scores.retrieve_list(
-            flaw_id, api_version=api_version, limit=lim, offset=off,
-        )
-        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_acknowledgments_list(
-    flaw_id: str,
-    *,
-    limit: int = DEFAULT_LIST_LIMIT,
-    offset: int = 0,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    lim = clamp_limit(limit)
-    off = clamp_offset(offset)
-    try:
-        resp = get_session().flaws.acknowledgments.retrieve_list(
-            flaw_id, api_version=api_version, limit=lim, offset=off,
-        )
-        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_labels_list(
-    flaw_id: str,
-    *,
-    limit: int = DEFAULT_LIST_LIMIT,
-    offset: int = 0,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    lim = clamp_limit(limit)
-    off = clamp_offset(offset)
-    try:
-        resp = get_session().flaws.labels.retrieve_list(
-            flaw_id, api_version=api_version, limit=lim, offset=off,
-        )
-        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_package_versions_list(
-    flaw_id: str,
-    *,
-    limit: int = DEFAULT_LIST_LIMIT,
-    offset: int = 0,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    lim = clamp_limit(limit)
-    off = clamp_offset(offset)
-    try:
-        resp = get_session().flaws.package_versions.retrieve_list(
-            flaw_id, api_version=api_version, limit=lim, offset=off,
-        )
-        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
+flaw_comments_list = _make_flaw_subresource_list("comments")
+flaw_references_list = _make_flaw_subresource_list("references")
+flaw_cvss_scores_list = _make_flaw_subresource_list("cvss_scores")
+flaw_acknowledgments_list = _make_flaw_subresource_list("acknowledgments")
+flaw_labels_list = _make_flaw_subresource_list("labels")
+flaw_package_versions_list = _make_flaw_subresource_list("package_versions")
 
 
 def affect_get(
@@ -975,104 +895,37 @@ def affect_cvss_score_get(
 # --- Single sub-resource retrieval tools ---
 
 
-def flaw_comment_get(
-    flaw_id: str,
-    comment_id: str,
-    *,
-    include_fields: list[str] | None = None,
-    exclude_fields: list[str] | None = None,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    try:
-        kw: dict[str, Any] = {}
-        if include_fields:
-            kw["include_fields"] = include_fields
-        if exclude_fields:
-            kw["exclude_fields"] = exclude_fields
-        obj = get_session().flaws.comments.retrieve(flaw_id, comment_id, api_version=api_version, **kw)
-        return {"ok": True, "comment": to_jsonable(obj)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
+def _make_flaw_subresource_get(accessor_name: str, response_key: str):
+    """Factory for flaw sub-resource get functions (comment, reference, etc.)."""
+    def _get_fn(
+        flaw_id: str,
+        sub_id: str,
+        *,
+        include_fields: list[str] | None = None,
+        exclude_fields: list[str] | None = None,
+        api_version: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            kw: dict[str, Any] = {}
+            if include_fields:
+                kw["include_fields"] = include_fields
+            if exclude_fields:
+                kw["exclude_fields"] = exclude_fields
+            accessor = getattr(get_session().flaws, accessor_name)
+            obj = accessor.retrieve(flaw_id, sub_id, api_version=api_version, **kw)
+            return {"ok": True, response_key: to_jsonable(obj)}
+        except requests.RequestException as e:
+            return {"ok": False, **http_error_payload(e)}
+    _get_fn.__name__ = f"flaw_{response_key}_get"
+    _get_fn.__qualname__ = f"flaw_{response_key}_get"
+    return _get_fn
 
 
-def flaw_acknowledgment_get(
-    flaw_id: str,
-    acknowledgment_id: str,
-    *,
-    include_fields: list[str] | None = None,
-    exclude_fields: list[str] | None = None,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    try:
-        kw: dict[str, Any] = {}
-        if include_fields:
-            kw["include_fields"] = include_fields
-        if exclude_fields:
-            kw["exclude_fields"] = exclude_fields
-        obj = get_session().flaws.acknowledgments.retrieve(flaw_id, acknowledgment_id, api_version=api_version, **kw)
-        return {"ok": True, "acknowledgment": to_jsonable(obj)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_reference_get(
-    flaw_id: str,
-    reference_id: str,
-    *,
-    include_fields: list[str] | None = None,
-    exclude_fields: list[str] | None = None,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    try:
-        kw: dict[str, Any] = {}
-        if include_fields:
-            kw["include_fields"] = include_fields
-        if exclude_fields:
-            kw["exclude_fields"] = exclude_fields
-        obj = get_session().flaws.references.retrieve(flaw_id, reference_id, api_version=api_version, **kw)
-        return {"ok": True, "reference": to_jsonable(obj)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_cvss_score_get(
-    flaw_id: str,
-    cvss_score_id: str,
-    *,
-    include_fields: list[str] | None = None,
-    exclude_fields: list[str] | None = None,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    try:
-        kw: dict[str, Any] = {}
-        if include_fields:
-            kw["include_fields"] = include_fields
-        if exclude_fields:
-            kw["exclude_fields"] = exclude_fields
-        obj = get_session().flaws.cvss_scores.retrieve(flaw_id, cvss_score_id, api_version=api_version, **kw)
-        return {"ok": True, "cvss_score": to_jsonable(obj)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_package_version_get(
-    flaw_id: str,
-    package_version_id: str,
-    *,
-    include_fields: list[str] | None = None,
-    exclude_fields: list[str] | None = None,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    try:
-        kw: dict[str, Any] = {}
-        if include_fields:
-            kw["include_fields"] = include_fields
-        if exclude_fields:
-            kw["exclude_fields"] = exclude_fields
-        obj = get_session().flaws.package_versions.retrieve(flaw_id, package_version_id, api_version=api_version, **kw)
-        return {"ok": True, "package_version": to_jsonable(obj)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
+flaw_comment_get = _make_flaw_subresource_get("comments", "comment")
+flaw_acknowledgment_get = _make_flaw_subresource_get("acknowledgments", "acknowledgment")
+flaw_reference_get = _make_flaw_subresource_get("references", "reference")
+flaw_cvss_score_get = _make_flaw_subresource_get("cvss_scores", "cvss_score")
+flaw_package_version_get = _make_flaw_subresource_get("package_versions", "package_version")
 
 
 def flaw_label_get(

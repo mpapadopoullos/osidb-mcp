@@ -18,3 +18,10 @@ def http_error_payload(exc: BaseException) -> dict[str, Any]:
             "detail": text,
         }
     return {"error": "osidb_error", "detail": str(exc)}
+
+
+def error_response(exc: BaseException) -> dict[str, Any]:
+    """Standard MCP tool error envelope."""
+    if isinstance(exc, requests.RequestException):
+        return {"ok": False, **http_error_payload(exc)}
+    return {"ok": False, "error": "osidb_error", "detail": str(exc)}
