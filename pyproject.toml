@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dotenv = ["python-dotenv>=1.0"]
-dev = ["pytest>=8.0", "pip-audit>=2.7", "python-dotenv>=1.0"]
+dev = ["pytest>=8.0", "pip-audit>=2.7", "python-dotenv>=1.0", "pre-commit>=4.0"]
 
 [project.scripts]
 osidb-mcp = "osidb_mcp.__main__:main"
@@ -44,6 +44,15 @@ PyPI = "https://pypi.org/project/osidb-mcp/"
 
 [tool.hatch.build.targets.sdist]
 include = ["src/osidb_mcp", "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md"]
+
+[tool.ruff]
+target-version = "py310"
+src = ["src", "tests"]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

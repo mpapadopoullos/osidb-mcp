@@ -21,7 +21,10 @@ def _aegis_base_url() -> str | None:
 
 
 def _aegis_request(
-    method: str, path: str, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
+    method: str,
+    path: str,
+    params: dict[str, str] | None = None,
+    json_body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Make a Kerberos-authenticated request to the AEGIS API."""
     base = _aegis_base_url()

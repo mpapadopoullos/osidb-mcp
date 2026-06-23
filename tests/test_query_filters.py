@@ -41,7 +41,9 @@ def test_get_cve_summary_invalid_group_by():
 def test_flaw_has_usable_cve_id():
     assert _flaw_has_usable_cve_id({"cve_id": "CVE-2024-1"})
     assert not _flaw_has_usable_cve_id({"cve_id": ""})
-    assert not _flaw_has_usable_cve_id({"cve_id": None, "uuid": "550e8400-e29b-41d4-a716-446655440000"})
+    assert not _flaw_has_usable_cve_id(
+        {"cve_id": None, "uuid": "550e8400-e29b-41d4-a716-446655440000"}
+    )
 
 
 def test_envelope_osidb_flaw_uuid_when_no_cve():

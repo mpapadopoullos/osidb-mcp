@@ -12,7 +12,6 @@ from osidb_mcp.tools_aegis import (
     aegis_run_cve_analysis,
 )
 
-
 AEGIS_URL = "https://aegis.example.com"
 
 EXPECTED_HEADERS = {
@@ -196,7 +195,9 @@ def test_run_cve_analysis_server_error(mock_settings: MagicMock, mock_request: M
     resp.text = "Internal Server Error"
     mock_request.side_effect = requests.HTTPError(response=resp)
 
-    result = aegis_run_cve_analysis(feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"})
+    result = aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
 
     assert result["ok"] is False
     assert result["status_code"] == 500
@@ -279,7 +280,9 @@ def test_get_kpi_metrics_default_order(mock_settings: MagicMock, mock_request: M
 def test_not_configured_returns_error(mock_settings: MagicMock) -> None:
     mock_settings.return_value = _mock_settings(aegis_url=None)
 
-    result = aegis_run_cve_analysis(feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"})
+    result = aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
 
     assert result["ok"] is False
     assert result["error"] == "aegis_not_configured"
@@ -293,7 +296,9 @@ def test_not_configured_returns_error(mock_settings: MagicMock) -> None:
 
 @patch("osidb_mcp.tools_aegis.requests.request")
 @patch("osidb_mcp.tools_aegis.current_settings")
-def test_non_json_response_returns_raw_text(mock_settings: MagicMock, mock_request: MagicMock) -> None:
+def test_non_json_response_returns_raw_text(
+    mock_settings: MagicMock, mock_request: MagicMock
+) -> None:
     mock_settings.return_value = _mock_settings()
 
     resp = MagicMock()
@@ -302,7 +307,9 @@ def test_non_json_response_returns_raw_text(mock_settings: MagicMock, mock_reque
     resp.text = "<html>Service Unavailable</html>"
     mock_request.return_value = resp
 
-    result = aegis_run_cve_analysis(feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"})
+    result = aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
 
     assert result["ok"] is True
     assert result["result"]["raw_text"] == "<html>Service Unavailable</html>"
@@ -320,7 +327,9 @@ def test_connection_error(mock_settings: MagicMock, mock_request: MagicMock) -> 
 
     mock_request.side_effect = requests.ConnectionError("Connection refused")
 
-    result = aegis_run_cve_analysis(feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"})
+    result = aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
 
     assert result["ok"] is False
     assert "error" in result
@@ -342,7 +351,9 @@ def test_kerberos_auth_failure(mock_settings: MagicMock, mock_request: MagicMock
     resp.text = "Negotiate authentication failed"
     mock_request.side_effect = requests.HTTPError(response=resp)
 
-    result = aegis_run_cve_analysis(feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"})
+    result = aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
 
     assert result["ok"] is False
     assert result["error"] == "osidb_http_error"

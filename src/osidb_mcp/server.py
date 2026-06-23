@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from osidb_mcp import tools_aegis, tools_read
 from osidb_mcp.config import AccessMode, Settings
-from osidb_mcp import tools_aegis
-from osidb_mcp import tools_read
-
 
 _READONLY_INSTRUCTIONS = """\
 This server exposes read-only OSIDB operations (flaws/CVEs, affects, trackers, comments, references, CVSS) \
@@ -21,12 +19,15 @@ Use high-level tools ``search_flaws``, ``get_flaw_details``, and ``get_cve_summa
 use lower-level ``flaws_list`` / ``flaws_count`` when you need full filter control.
 """
 
-_READWRITE_INSTRUCTIONS = _READONLY_INSTRUCTIONS + """\
+_READWRITE_INSTRUCTIONS = (
+    _READONLY_INSTRUCTIONS
+    + """\
 
 This server is running in **readwrite** mode. Mutation tools (``flaw_create``, ``flaw_update``, \
 ``flaw_label_add``, ``flaw_incident_request``, ``affects_bulk_*``, etc.) are available in addition to \
 all read-only tools. Write operations contact OSIDB and create real data; treat transcripts accordingly.
 """
+)
 
 
 def create_server(settings: Settings) -> FastMCP:
@@ -100,7 +101,7 @@ def create_server(settings: Settings) -> FastMCP:
             "Scope by flaw using ``flaw_cve_id`` / ``flaw_cve_id_in`` or ``flaw_uuid`` / ``flaw_uuid_in`` when there is no CVE. "
             "Supports ``affectedness``, ``resolution``, ``impact`` filters on the affect itself. "
             "Date range filters: ``created_dt_gte``, ``created_dt_lte``, ``updated_dt_gte``, ``updated_dt_lte`` (ISO 8601). "
-            "Ordering: ``order`` (comma-separated, e.g. \"-created_dt,ps_component\")."
+            'Ordering: ``order`` (comma-separated, e.g. "-created_dt,ps_component").'
         ),
     )(tools_read.affects_list)
     mcp.tool(
@@ -110,7 +111,7 @@ def create_server(settings: Settings) -> FastMCP:
             "Scope by flaw using ``affects_flaw_cve_id`` (or ``_in``) or ``affects_flaw_uuid`` (or ``_in``) when there is no CVE. "
             "Supports ``ps_update_stream``, ``status``, ``resolution``, ``external_system_id``, ``embargoed`` filters. "
             "Date range filters: ``created_dt_gte``, ``created_dt_lte``, ``updated_dt_gte``, ``updated_dt_lte`` (ISO 8601). "
-            "Ordering: ``order`` (comma-separated, e.g. \"-created_dt\")."
+            'Ordering: ``order`` (comma-separated, e.g. "-created_dt").'
         ),
     )(tools_read.trackers_list)
     mcp.tool(
@@ -232,8 +233,7 @@ def create_server(settings: Settings) -> FastMCP:
     mcp.tool(
         name="exploits_epss",
         description=(
-            "List EPSS (Exploit Prediction Scoring System) scores. "
-            "Paginated via limit/offset."
+            "List EPSS (Exploit Prediction Scoring System) scores. Paginated via limit/offset."
         ),
     )(tools_read.exploits_epss)
     mcp.tool(
@@ -356,8 +356,7 @@ def create_server(settings: Settings) -> FastMCP:
     )(tools_aegis.aegis_get_kpi_metrics)
 
     if is_readwrite:
-        from osidb_mcp import tools_write
-        from osidb_mcp import tools_workflow
+        from osidb_mcp import tools_workflow, tools_write
 
         mcp.tool(
             name="flaw_create",

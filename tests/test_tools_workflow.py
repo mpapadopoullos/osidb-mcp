@@ -20,6 +20,7 @@ def _classification_response(state: str = "TRIAGE"):
 # flaw_promote tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_workflow.get_session")
 def test_flaw_promote_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
@@ -51,6 +52,7 @@ def test_flaw_promote_missing_requirements(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # flaw_reject tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_workflow.get_session")
 def test_flaw_reject_success(mock_get_session: MagicMock) -> None:
@@ -91,6 +93,7 @@ def test_flaw_reject_http_error(mock_get_session: MagicMock) -> None:
 # flaw_reset tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_workflow.get_session")
 def test_flaw_reset_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
@@ -116,6 +119,7 @@ def test_flaw_reset_http_error(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # flaw_revert tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_workflow.get_session")
 def test_flaw_revert_success(mock_get_session: MagicMock) -> None:

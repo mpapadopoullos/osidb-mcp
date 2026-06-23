@@ -65,6 +65,7 @@ def _mock_api_response(parsed_dict=None, status_code=200):
 # affect_cvss_score_get tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read.get_session")
 def test_affect_cvss_score_get_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
@@ -129,6 +130,7 @@ def test_affect_cvss_score_get_invalid_uuid() -> None:
 # flaw_comment_get tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read.get_session")
 def test_flaw_comment_get_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
@@ -157,6 +159,7 @@ def test_flaw_comment_get_not_found(mock_get_session: MagicMock) -> None:
 # flaw_label_get tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read.get_session")
 def test_flaw_label_get_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
@@ -171,6 +174,7 @@ def test_flaw_label_get_success(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # flaw_acknowledgment_get tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_read.get_session")
 def test_flaw_acknowledgment_get_success(mock_get_session: MagicMock) -> None:
@@ -187,10 +191,13 @@ def test_flaw_acknowledgment_get_success(mock_get_session: MagicMock) -> None:
 # flaw_reference_get tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read.get_session")
 def test_flaw_reference_get_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
-    session.flaws.references.retrieve.return_value = _mock_subresource("ref-1", url="https://example.com")
+    session.flaws.references.retrieve.return_value = _mock_subresource(
+        "ref-1", url="https://example.com"
+    )
 
     result = flaw_reference_get("CVE-2026-1234", "ref-1")
 
@@ -201,6 +208,7 @@ def test_flaw_reference_get_success(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # flaw_cvss_score_get tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_read.get_session")
 def test_flaw_cvss_score_get_success(mock_get_session: MagicMock) -> None:
@@ -217,6 +225,7 @@ def test_flaw_cvss_score_get_success(mock_get_session: MagicMock) -> None:
 # flaw_package_version_get tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read.get_session")
 def test_flaw_package_version_get_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
@@ -231,6 +240,7 @@ def test_flaw_package_version_get_success(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # alerts_list / alert_get tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_alerts_list_success(mock_raw: MagicMock) -> None:
@@ -263,9 +273,13 @@ def test_alert_get_invalid_uuid() -> None:
 # exploits_epss tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_exploits_epss_success(mock_raw: MagicMock) -> None:
-    mock_raw.return_value = {"ok": True, "data": {"results": [{"cve": "CVE-2026-1234", "epss": 0.5}]}}
+    mock_raw.return_value = {
+        "ok": True,
+        "data": {"results": [{"cve": "CVE-2026-1234", "epss": 0.5}]},
+    }
 
     result = exploits_epss()
 
@@ -276,6 +290,7 @@ def test_exploits_epss_success(mock_raw: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # exploits_cve_map tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_exploits_cve_map_success(mock_raw: MagicMock) -> None:
@@ -290,6 +305,7 @@ def test_exploits_cve_map_success(mock_raw: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # exploits_report_date tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_exploits_report_date_success(mock_raw: MagicMock) -> None:
@@ -311,6 +327,7 @@ def test_exploits_report_date_invalid() -> None:
 # exploits_report_explanations tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_exploits_report_explanations_success(mock_raw: MagicMock) -> None:
     mock_raw.return_value = {"ok": True, "data": {"explanations": []}}
@@ -324,6 +341,7 @@ def test_exploits_report_explanations_success(mock_raw: MagicMock) -> None:
 # exploits_flaw_data tests
 # ---------------------------------------------------------------------------
 
+
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_exploits_flaw_data_success(mock_raw: MagicMock) -> None:
     mock_raw.return_value = {"ok": True, "data": {"results": []}}
@@ -336,6 +354,7 @@ def test_exploits_flaw_data_success(mock_raw: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # workflows_list / workflow_get tests
 # ---------------------------------------------------------------------------
+
 
 @patch("osidb_mcp.tools_read._raw_api_call")
 def test_workflows_list_success(mock_raw: MagicMock) -> None:
@@ -516,7 +535,8 @@ def test_label_get_success(mock_get_session: MagicMock) -> None:
     assert result["ok"] is True
     assert result["label"]["name"] == "psirt"
     session.labels.retrieve.assert_called_once_with(
-        "label-uuid-1", api_version=None,
+        "label-uuid-1",
+        api_version=None,
     )
 
 

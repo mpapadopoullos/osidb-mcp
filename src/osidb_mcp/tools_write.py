@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 from typing import Any
 
 import requests
@@ -13,14 +12,31 @@ from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import current_settings, get_session
 
 _FLAW_FIELDS = (
-    "title", "comment_zero", "embargoed", "cve_id", "impact", "components",
-    "cve_description", "statement", "cwe_id", "source", "reported_dt",
-    "unembargo_dt", "mitigation", "owner",
+    "title",
+    "comment_zero",
+    "embargoed",
+    "cve_id",
+    "impact",
+    "components",
+    "cve_description",
+    "statement",
+    "cwe_id",
+    "source",
+    "reported_dt",
+    "unembargo_dt",
+    "mitigation",
+    "owner",
 )
 
 _AFFECT_FIELDS = (
-    "affectedness", "resolution", "impact", "ps_component", "ps_module",
-    "ps_update_stream", "purl", "delegated_resolution",
+    "affectedness",
+    "resolution",
+    "impact",
+    "ps_component",
+    "ps_module",
+    "ps_update_stream",
+    "purl",
+    "delegated_resolution",
     "not_affected_justification",
 )
 
@@ -46,7 +62,9 @@ def _create_subresources(
             result = resource_group.create(item, flaw_id, **kwargs)
             created.append(to_jsonable(result))
         except (requests.RequestException, Exception) as exc:
-            detail = http_error_payload(exc) if isinstance(exc, requests.RequestException) else str(exc)
+            detail = (
+                http_error_payload(exc) if isinstance(exc, requests.RequestException) else str(exc)
+            )
             errors.append({"index": i, label: item, "error": detail})
     return created, errors
 
@@ -147,7 +165,7 @@ def flaw_create(
 
     if acknowledgments:
         created, errors = _create_subresources(
-            session.flaws.acknowledgments,
+            session.flaws.acknowledgments,  # ty:ignore[unresolved-attribute]
             flaw_uuid,
             acknowledgments,
             embargoed,
@@ -158,7 +176,7 @@ def flaw_create(
 
     if references:
         created, errors = _create_subresources(
-            session.flaws.references,
+            session.flaws.references,  # ty:ignore[unresolved-attribute]
             flaw_uuid,
             references,
             embargoed,
@@ -169,7 +187,7 @@ def flaw_create(
 
     if cvss_scores:
         created, errors = _create_subresources(
-            session.flaws.cvss_scores,
+            session.flaws.cvss_scores,  # ty:ignore[unresolved-attribute]
             flaw_uuid,
             cvss_scores,
             embargoed,
@@ -189,6 +207,7 @@ def flaw_create(
 # ---------------------------------------------------------------------------
 # flaw_update
 # ---------------------------------------------------------------------------
+
 
 def flaw_update(
     flaw_id: str,
@@ -244,11 +263,19 @@ def flaw_update(
             flaw_data[field] = to_jsonable(current_val)
 
     overrides = {
-        "title": title, "comment_zero": comment_zero, "embargoed": embargoed,
-        "cve_id": cve_id, "impact": impact, "components": components,
-        "cve_description": cve_description, "statement": statement,
-        "cwe_id": cwe_id, "source": source, "reported_dt": reported_dt,
-        "unembargo_dt": unembargo_dt, "mitigation": mitigation,
+        "title": title,
+        "comment_zero": comment_zero,
+        "embargoed": embargoed,
+        "cve_id": cve_id,
+        "impact": impact,
+        "components": components,
+        "cve_description": cve_description,
+        "statement": statement,
+        "cwe_id": cwe_id,
+        "source": source,
+        "reported_dt": reported_dt,
+        "unembargo_dt": unembargo_dt,
+        "mitigation": mitigation,
         "owner": owner,
     }
     for k, v in overrides.items():
@@ -267,6 +294,7 @@ def flaw_update(
 # ---------------------------------------------------------------------------
 # affect_add / affect_remove
 # ---------------------------------------------------------------------------
+
 
 def affect_add(
     flaw_id: str,
@@ -318,6 +346,7 @@ def affect_remove(
 # flaw_acknowledgment_add / flaw_acknowledgment_remove
 # ---------------------------------------------------------------------------
 
+
 def flaw_acknowledgment_add(
     flaw_id: str,
     acknowledgments: list[dict[str, Any]],
@@ -339,7 +368,7 @@ def flaw_acknowledgment_add(
         return error_response(exc)
 
     created, errors = _create_subresources(
-        session.flaws.acknowledgments,
+        session.flaws.acknowledgments,  # ty:ignore[unresolved-attribute]
         flaw_id,
         acknowledgments,
         flaw_embargoed,
@@ -364,7 +393,7 @@ def flaw_acknowledgment_remove(
     """
     session = get_session()
     try:
-        session.flaws.acknowledgments.delete(flaw_id, acknowledgment_id)
+        session.flaws.acknowledgments.delete(flaw_id, acknowledgment_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "deleted": acknowledgment_id}
     except Exception as exc:
         return error_response(exc)
@@ -373,6 +402,7 @@ def flaw_acknowledgment_remove(
 # ---------------------------------------------------------------------------
 # flaw_reference_add / flaw_reference_remove
 # ---------------------------------------------------------------------------
+
 
 def flaw_reference_add(
     flaw_id: str,
@@ -395,7 +425,7 @@ def flaw_reference_add(
         return error_response(exc)
 
     created, errors = _create_subresources(
-        session.flaws.references,
+        session.flaws.references,  # ty:ignore[unresolved-attribute]
         flaw_id,
         references,
         flaw_embargoed,
@@ -420,7 +450,7 @@ def flaw_reference_remove(
     """
     session = get_session()
     try:
-        session.flaws.references.delete(flaw_id, reference_id)
+        session.flaws.references.delete(flaw_id, reference_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "deleted": reference_id}
     except Exception as exc:
         return error_response(exc)
@@ -429,6 +459,7 @@ def flaw_reference_remove(
 # ---------------------------------------------------------------------------
 # flaw_cvss_add / flaw_cvss_remove
 # ---------------------------------------------------------------------------
+
 
 def flaw_cvss_add(
     flaw_id: str,
@@ -451,7 +482,7 @@ def flaw_cvss_add(
         return error_response(exc)
 
     created, errors = _create_subresources(
-        session.flaws.cvss_scores,
+        session.flaws.cvss_scores,  # ty:ignore[unresolved-attribute]
         flaw_id,
         cvss_scores,
         flaw_embargoed,
@@ -477,7 +508,7 @@ def flaw_cvss_remove(
     """
     session = get_session()
     try:
-        session.flaws.cvss_scores.delete(flaw_id, cvss_score_id, api_version="v1")
+        session.flaws.cvss_scores.delete(flaw_id, cvss_score_id, api_version="v1")  # ty:ignore[unresolved-attribute]
         return {"ok": True, "deleted": cvss_score_id}
     except Exception as exc:
         return error_response(exc)
@@ -486,6 +517,7 @@ def flaw_cvss_remove(
 # ---------------------------------------------------------------------------
 # affect_update
 # ---------------------------------------------------------------------------
+
 
 def affect_update(
     affect_uuid: str,
@@ -558,6 +590,7 @@ def affect_update(
 # affect_update_bulk
 # ---------------------------------------------------------------------------
 
+
 def affect_update_bulk(
     affects: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -600,7 +633,8 @@ def affect_update_bulk(
 
     try:
         list_resp = session.affects.retrieve_list(
-            uuid__in=uuids, limit=len(uuids),
+            uuid__in=uuids,
+            limit=len(uuids),
         )
     except Exception as exc:
         return error_response(exc)
@@ -616,10 +650,12 @@ def affect_update_bulk(
         affect_uuid = spec["affect_uuid"]
         current = fetched_by_uuid.get(affect_uuid)
         if current is None:
-            fetch_errors.append({
-                "affect_uuid": affect_uuid,
-                "error": f"affect {affect_uuid} not found in list response",
-            })
+            fetch_errors.append(
+                {
+                    "affect_uuid": affect_uuid,
+                    "error": f"affect {affect_uuid} not found in list response",
+                }
+            )
             continue
 
         affect_data: dict[str, Any] = {}
@@ -628,9 +664,15 @@ def affect_update_bulk(
             if current_val is not None:
                 affect_data[field] = to_jsonable(current_val)
 
-        for k in ("affectedness", "resolution", "impact", "ps_component",
-                   "purl", "delegated_resolution",
-                   "not_affected_justification"):
+        for k in (
+            "affectedness",
+            "resolution",
+            "impact",
+            "ps_component",
+            "purl",
+            "delegated_resolution",
+            "not_affected_justification",
+        ):
             v = spec.get(k)
             if v is not None:
                 affect_data[k] = v
@@ -650,7 +692,7 @@ def affect_update_bulk(
         }
 
     try:
-        result = session.affects.bulk_update(payloads)
+        result = session.affects.bulk_update(payloads)  # ty:ignore[invalid-argument-type]
         resp: dict[str, Any] = {"ok": True, "updated": to_jsonable(result)}
         if fetch_errors:
             resp["fetch_errors"] = fetch_errors
@@ -745,7 +787,7 @@ def trackers_bulk_file(
         return error_response(exc)
 
     try:
-        suggestions = session.trackers.file(
+        suggestions = session.trackers.file(  # ty:ignore[unresolved-attribute]
             {"flaw_uuids": [resolved_id]},
             exclude_existing_trackers=exclude_existing_trackers,
         )
@@ -758,8 +800,7 @@ def trackers_bulk_file(
 
     if only_selected:
         to_file = [
-            s for s in streams
-            if s.get("selected") or (s.get("offer") or {}).get("selected")
+            s for s in streams if s.get("selected") or (s.get("offer") or {}).get("selected")
         ]
     else:
         to_file = streams
@@ -797,14 +838,16 @@ def trackers_bulk_file(
     failures: list[dict[str, Any]] = []
 
     for i, stream in enumerate(to_file):
-        is_last = (i == len(to_file) - 1)
+        is_last = i == len(to_file) - 1
         affect_uuid = (stream.get("affect") or {}).get("uuid")
         if not affect_uuid:
-            failures.append({
-                "ps_update_stream": stream.get("ps_update_stream"),
-                "ps_component": stream.get("ps_component"),
-                "error": "Missing affect UUID in suggestion data",
-            })
+            failures.append(
+                {
+                    "ps_update_stream": stream.get("ps_update_stream"),
+                    "ps_component": stream.get("ps_component"),
+                    "error": "Missing affect UUID in suggestion data",
+                }
+            )
             continue
 
         form_data: dict[str, Any] = {
@@ -817,17 +860,21 @@ def trackers_bulk_file(
 
         try:
             result = session.trackers.create(form_data=form_data)
-            successes.append({
-                "ps_update_stream": stream.get("ps_update_stream"),
-                "ps_component": stream.get("ps_component"),
-                "tracker": to_jsonable(result),
-            })
+            successes.append(
+                {
+                    "ps_update_stream": stream.get("ps_update_stream"),
+                    "ps_component": stream.get("ps_component"),
+                    "tracker": to_jsonable(result),
+                }
+            )
         except Exception as exc:
-            failures.append({
-                "ps_update_stream": stream.get("ps_update_stream"),
-                "ps_component": stream.get("ps_component"),
-                "error": str(exc),
-            })
+            failures.append(
+                {
+                    "ps_update_stream": stream.get("ps_update_stream"),
+                    "ps_component": stream.get("ps_component"),
+                    "error": str(exc),
+                }
+            )
 
     return {
         "ok": len(failures) == 0,
@@ -841,6 +888,7 @@ def trackers_bulk_file(
 # ---------------------------------------------------------------------------
 # flaw_comment_create
 # ---------------------------------------------------------------------------
+
 
 def _post_jira_comment(task_key: str, text: str) -> dict[str, Any]:
     """Post a comment directly to a Jira issue via REST API v3."""
@@ -860,7 +908,8 @@ def _post_jira_comment(task_key: str, text: str) -> dict[str, Any]:
             "detail": f"Missing env vars: {', '.join(missing)}",
         }
 
-    url = f"{settings.jira_url.rstrip('/')}/rest/api/3/issue/{task_key}/comment"
+    jira_url = settings.jira_url or ""
+    url = f"{jira_url.rstrip('/')}/rest/api/3/issue/{task_key}/comment"
     body = {
         "body": {
             "type": "doc",
@@ -873,15 +922,15 @@ def _post_jira_comment(task_key: str, text: str) -> dict[str, Any]:
             ],
         }
     }
-    headers = {"Content-Type": "application/json"}
-    auth = (settings.jira_api_email, settings.jira_access_token)
+    headers: dict[str, str | bytes] = {"Content-Type": "application/json"}
+    auth: tuple[str, str] = (settings.jira_api_email or "", settings.jira_access_token or "")
 
     try:
         import certifi
 
-        ca_bundle = certifi.where()
+        ca_bundle: str | bool = certifi.where()
     except ImportError:
-        ca_bundle = True  # type: ignore[assignment]
+        ca_bundle = True
 
     try:
         resp = requests.post(
@@ -960,7 +1009,7 @@ def flaw_comment_create(
         comment_data["creator"] = creator
 
     try:
-        result = session.flaws.comments.create(comment_data, flaw_id)
+        result = session.flaws.comments.create(comment_data, flaw_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "comment": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -969,6 +1018,7 @@ def flaw_comment_create(
 # ---------------------------------------------------------------------------
 # flaw_label_add / flaw_label_remove
 # ---------------------------------------------------------------------------
+
 
 def flaw_label_add(
     flaw_id: str,
@@ -999,6 +1049,7 @@ def flaw_label_add(
     kw: dict[str, Any] = {"label": label}
     if state:
         from osidb_bindings.bindings.python_client.models.state_enum import StateEnum
+
         kw["state"] = StateEnum(state)
     if contributor:
         kw["contributor"] = contributor
@@ -1006,6 +1057,7 @@ def flaw_label_add(
         from osidb_bindings.bindings.python_client.models.flaw_collaborator_post_type_enum import (
             FlawCollaboratorPostTypeEnum,
         )
+
         kw["type_"] = FlawCollaboratorPostTypeEnum(label_type)
 
     body = FlawCollaboratorPostRequest(**kw)
@@ -1015,8 +1067,11 @@ def flaw_label_add(
         from osidb_bindings.bindings.python_client.api.osidb import (
             osidb_api_v1_flaws_labels_create,
         )
+
         r = osidb_api_v1_flaws_labels_create.sync_detailed(
-            flaw_uuid, client=client, body=body,
+            flaw_uuid,
+            client=client,
+            body=body,
         )
         if r.parsed is None:
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
@@ -1045,8 +1100,11 @@ def flaw_label_remove(
         from osidb_bindings.bindings.python_client.api.osidb import (
             osidb_api_v1_flaws_labels_destroy,
         )
-        r = osidb_api_v1_flaws_labels_destroy.sync_detailed(
-            flaw_uuid, label_id, client=client,
+
+        osidb_api_v1_flaws_labels_destroy.sync_detailed(
+            flaw_uuid,
+            label_id,
+            client=client,
         )
         return {"ok": True, "deleted": label_id}
     except Exception as exc:
@@ -1056,6 +1114,7 @@ def flaw_label_remove(
 # ---------------------------------------------------------------------------
 # flaw_incident_request
 # ---------------------------------------------------------------------------
+
 
 def flaw_incident_request(
     flaw_id: str,
@@ -1082,8 +1141,11 @@ def flaw_incident_request(
         from osidb_bindings.bindings.python_client.api.osidb import (
             osidb_api_v1_flaws_incident_requests_create,
         )
+
         r = osidb_api_v1_flaws_incident_requests_create.sync_detailed(
-            flaw_id, client=client, body=body,
+            flaw_id,
+            client=client,
+            body=body,
         )
         if r.parsed is None:
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
@@ -1095,6 +1157,7 @@ def flaw_incident_request(
 # ---------------------------------------------------------------------------
 # flaw_acknowledgment_update
 # ---------------------------------------------------------------------------
+
 
 def flaw_acknowledgment_update(
     flaw_id: str,
@@ -1118,7 +1181,7 @@ def flaw_acknowledgment_update(
     session = get_session()
 
     try:
-        current = session.flaws.acknowledgments.retrieve(flaw_id, acknowledgment_id)
+        current = session.flaws.acknowledgments.retrieve(flaw_id, acknowledgment_id)  # ty:ignore[unresolved-attribute]
     except Exception as exc:
         return error_response(exc)
 
@@ -1137,7 +1200,7 @@ def flaw_acknowledgment_update(
         data["from_upstream"] = from_upstream
 
     try:
-        result = session.flaws.acknowledgments.update(flaw_id, acknowledgment_id, data)
+        result = session.flaws.acknowledgments.update(flaw_id, acknowledgment_id, data)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "acknowledgment": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -1146,6 +1209,7 @@ def flaw_acknowledgment_update(
 # ---------------------------------------------------------------------------
 # flaw_reference_update
 # ---------------------------------------------------------------------------
+
 
 def flaw_reference_update(
     flaw_id: str,
@@ -1169,7 +1233,7 @@ def flaw_reference_update(
     session = get_session()
 
     try:
-        current = session.flaws.references.retrieve(flaw_id, reference_id)
+        current = session.flaws.references.retrieve(flaw_id, reference_id)  # ty:ignore[unresolved-attribute]
     except Exception as exc:
         return error_response(exc)
 
@@ -1188,7 +1252,7 @@ def flaw_reference_update(
         data["type"] = reference_type
 
     try:
-        result = session.flaws.references.update(flaw_id, reference_id, data)
+        result = session.flaws.references.update(flaw_id, reference_id, data)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "reference": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -1197,6 +1261,7 @@ def flaw_reference_update(
 # ---------------------------------------------------------------------------
 # flaw_cvss_update
 # ---------------------------------------------------------------------------
+
 
 def flaw_cvss_update(
     flaw_id: str,
@@ -1224,8 +1289,10 @@ def flaw_cvss_update(
     session = get_session()
 
     try:
-        current = session.flaws.cvss_scores.retrieve(
-            flaw_id, cvss_score_id, api_version="v1",
+        current = session.flaws.cvss_scores.retrieve(  # ty:ignore[unresolved-attribute]
+            flaw_id,
+            cvss_score_id,
+            api_version="v1",
         )
     except Exception as exc:
         return error_response(exc)
@@ -1266,6 +1333,7 @@ def flaw_cvss_update(
 # flaw_package_version_add
 # ---------------------------------------------------------------------------
 
+
 def flaw_package_version_add(
     flaw_id: str,
     package: str,
@@ -1299,7 +1367,9 @@ def flaw_package_version_add(
 
     version_objs = [FlawVersionRequest(**v) for v in versions]
     body = FlawPackageVersionPostRequest(
-        package=package, versions=version_objs, embargoed=embargoed,
+        package=package,
+        versions=version_objs,
+        embargoed=embargoed,
     )
 
     try:
@@ -1307,8 +1377,11 @@ def flaw_package_version_add(
         from osidb_bindings.bindings.python_client.api.osidb import (
             osidb_api_v1_flaws_package_versions_create,
         )
+
         r = osidb_api_v1_flaws_package_versions_create.sync_detailed(
-            flaw_uuid, client=client, body=body,
+            flaw_uuid,
+            client=client,
+            body=body,
         )
         if r.parsed is None:
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
@@ -1321,6 +1394,7 @@ def flaw_package_version_add(
 # affects_bulk_create / affects_bulk_update / affects_bulk_delete
 # ---------------------------------------------------------------------------
 
+
 def affects_bulk_create(
     affects: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -1332,7 +1406,7 @@ def affects_bulk_create(
     """
     session = get_session()
     try:
-        result = session.affects.bulk_create(affects)
+        result = session.affects.bulk_create(affects)  # ty:ignore[invalid-argument-type]
         return {"ok": True, "created": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -1349,7 +1423,7 @@ def affects_bulk_update(
     """
     session = get_session()
     try:
-        result = session.affects.bulk_update(affects)
+        result = session.affects.bulk_update(affects)  # ty:ignore[invalid-argument-type]
         return {"ok": True, "updated": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -1374,8 +1448,8 @@ def affects_bulk_delete(
         resp = requests.delete(
             f"{client.base_url}/osidb/api/v2/affects/bulk",
             json=affect_uuids,
-            headers=client.get_headers(),
-            verify=client.verify_ssl,
+            headers=client.get_headers(),  # ty:ignore[invalid-argument-type]
+            verify=client.verify_ssl,  # ty:ignore[invalid-argument-type]
             auth=client.get_auth(),
             timeout=client.get_timeout(),
         )
@@ -1388,6 +1462,7 @@ def affects_bulk_delete(
 # ---------------------------------------------------------------------------
 # flaw_package_version_update / flaw_package_version_remove
 # ---------------------------------------------------------------------------
+
 
 def flaw_package_version_update(
     flaw_id: str,
@@ -1415,8 +1490,9 @@ def flaw_package_version_update(
     session = get_session()
 
     try:
-        current = session.flaws.package_versions.retrieve(
-            flaw_id=str(flaw_uuid), id=package_version_id,
+        current = session.flaws.package_versions.retrieve(  # ty:ignore[unresolved-attribute]
+            flaw_id=str(flaw_uuid),
+            id=package_version_id,
         )
     except Exception as exc:
         return error_response(exc)
@@ -1430,8 +1506,10 @@ def flaw_package_version_update(
         data["versions"] = versions
 
     try:
-        result = session.flaws.package_versions.update(
-            flaw_id=str(flaw_uuid), id=package_version_id, form_data=data,
+        result = session.flaws.package_versions.update(  # ty:ignore[unresolved-attribute]
+            flaw_id=str(flaw_uuid),
+            id=package_version_id,
+            form_data=data,
         )
         return {"ok": True, "package_version": to_jsonable(result)}
     except Exception as exc:
@@ -1455,8 +1533,9 @@ def flaw_package_version_remove(
 
     session = get_session()
     try:
-        session.flaws.package_versions.delete(
-            flaw_id=str(flaw_uuid), id=package_version_id,
+        session.flaws.package_versions.delete(  # ty:ignore[unresolved-attribute]
+            flaw_id=str(flaw_uuid),
+            id=package_version_id,
         )
         return {"ok": True, "deleted": package_version_id}
     except Exception as exc:
@@ -1466,6 +1545,7 @@ def flaw_package_version_remove(
 # ---------------------------------------------------------------------------
 # affect_cvss_score_add / affect_cvss_score_remove
 # ---------------------------------------------------------------------------
+
 
 def affect_cvss_score_add(
     affect_id: str,
@@ -1514,8 +1594,9 @@ def affect_cvss_score_add(
             return error_response(exc)
 
     try:
-        result = session.affects.cvss_scores.create(
-            affect_id=affect_id, form_data=form_data,
+        result = session.affects.cvss_scores.create(  # ty:ignore[unresolved-attribute]
+            affect_id=affect_id,
+            form_data=form_data,
         )
         return {"ok": True, "cvss_score": to_jsonable(result)}
     except Exception as exc:
@@ -1539,7 +1620,7 @@ def affect_cvss_score_remove(
 
     session = get_session()
     try:
-        session.affects.cvss_scores.delete(affect_id=affect_id, id=cvss_score_id)
+        session.affects.cvss_scores.delete(affect_id=affect_id, id=cvss_score_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "deleted": cvss_score_id}
     except Exception as exc:
         return error_response(exc)
@@ -1548,6 +1629,7 @@ def affect_cvss_score_remove(
 # ---------------------------------------------------------------------------
 # tracker_update
 # ---------------------------------------------------------------------------
+
 
 def tracker_update(
     tracker_id: str,
@@ -1626,7 +1708,7 @@ def trackers_multi_flaw_file(
             }
 
     try:
-        suggestions = session.trackers.file(
+        suggestions = session.trackers.file(  # ty:ignore[unresolved-attribute]
             {"flaw_uuids": resolved_ids},
             exclude_existing_trackers=exclude_existing_trackers,
         )
@@ -1639,8 +1721,7 @@ def trackers_multi_flaw_file(
 
     if only_selected:
         to_file = [
-            s for s in streams
-            if s.get("selected") or (s.get("offer") or {}).get("selected")
+            s for s in streams if s.get("selected") or (s.get("offer") or {}).get("selected")
         ]
     else:
         to_file = streams
@@ -1688,7 +1769,7 @@ def trackers_multi_flaw_file(
             for a in (s.get("affects") or [s.get("affect")])
             if a
         ]
-        sync_to_bz = (i == len(to_file) - 1)
+        sync_to_bz = i == len(to_file) - 1
 
         try:
             result = session.trackers.create(
@@ -1699,15 +1780,19 @@ def trackers_multi_flaw_file(
                     "sync_to_bz": sync_to_bz,
                 }
             )
-            successes.append({
-                "ps_update_stream": ps_update_stream,
-                "tracker": to_jsonable(result),
-            })
+            successes.append(
+                {
+                    "ps_update_stream": ps_update_stream,
+                    "tracker": to_jsonable(result),
+                }
+            )
         except Exception as exc:
-            failures.append({
-                "ps_update_stream": ps_update_stream,
-                "error": str(exc),
-            })
+            failures.append(
+                {
+                    "ps_update_stream": ps_update_stream,
+                    "error": str(exc),
+                }
+            )
 
     return {
         "ok": len(failures) == 0,
@@ -1783,11 +1868,12 @@ def flaw_save(
     # Step 2: Delete removed affects
     if removed_affect_uuids:
         try:
-            session.affects.bulk_destroy(
+            session.affects.bulk_destroy(  # ty:ignore[unresolved-attribute]
                 {"affect_uuids": removed_affect_uuids}
             )
             results["steps"]["affects_deleted"] = {
-                "ok": True, "count": len(removed_affect_uuids),
+                "ok": True,
+                "count": len(removed_affect_uuids),
             }
         except Exception as exc:
             results["ok"] = False
@@ -1798,9 +1884,10 @@ def flaw_save(
         try:
             for aff in new_affects:
                 aff.setdefault("flaw", resolved_id)
-            created = session.affects.bulk_create(new_affects)
+            created = session.affects.bulk_create(new_affects)  # ty:ignore[invalid-argument-type]
             results["steps"]["affects_created"] = {
-                "ok": True, "count": len(new_affects),
+                "ok": True,
+                "count": len(new_affects),
                 "affects": to_jsonable(created),
             }
         except Exception as exc:
@@ -1810,9 +1897,10 @@ def flaw_save(
     # Step 4: Bulk update modified affects
     if modified_affects:
         try:
-            updated_affects = session.affects.bulk_update(modified_affects)
+            updated_affects = session.affects.bulk_update(modified_affects)  # ty:ignore[invalid-argument-type]
             results["steps"]["affects_updated"] = {
-                "ok": True, "count": len(modified_affects),
+                "ok": True,
+                "count": len(modified_affects),
                 "affects": to_jsonable(updated_affects),
             }
         except Exception as exc:
@@ -1834,14 +1922,17 @@ def flaw_save(
         from osidb_bindings.bindings.python_client.api.osidb import (
             osidb_api_v1_flaws_labels_create,
         )
-        from osidb_bindings.bindings.python_client.models.flaw_label_request import (
+        from osidb_bindings.bindings.python_client.models.flaw_label_request import (  # ty:ignore[unresolved-import]
             FlawLabelRequest,
         )
+
         for label_name in labels_to_add:
             try:
                 body = FlawLabelRequest(label=label_name)
                 r = osidb_api_v1_flaws_labels_create.sync_detailed(
-                    flaw_uuid, client=client, body=body,
+                    flaw_uuid,
+                    client=client,
+                    body=body,
                 )
                 if r.parsed:
                     added.append(to_jsonable(r.parsed.to_dict()))
@@ -1873,10 +1964,13 @@ def flaw_save(
         from osidb_bindings.bindings.python_client.api.osidb import (
             osidb_api_v1_flaws_labels_destroy,
         )
+
         for label_id in labels_to_remove:
             try:
                 osidb_api_v1_flaws_labels_destroy.sync_detailed(
-                    flaw_uuid, label_id, client=client,
+                    flaw_uuid,
+                    label_id,
+                    client=client,
                 )
                 removed.append(label_id)
             except Exception as exc:

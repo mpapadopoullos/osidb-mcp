@@ -33,8 +33,7 @@ def _parse_access_mode() -> AccessMode:
     if raw == "readwrite":
         return AccessMode.readwrite
     raise ValueError(
-        "OSIDB_MCP_ACCESS_MODE must be 'readonly' or 'readwrite' (default: readonly). "
-        f"Got {raw!r}"
+        f"OSIDB_MCP_ACCESS_MODE must be 'readonly' or 'readwrite' (default: readonly). Got {raw!r}"
     )
 
 
@@ -66,9 +65,7 @@ def load_settings() -> Settings:
     password = os.environ.get("OSIDB_PASSWORD")
     if auth == "basic":
         if not username or not password:
-            raise ValueError(
-                "OSIDB_AUTH=basic requires OSIDB_USERNAME and OSIDB_PASSWORD"
-            )
+            raise ValueError("OSIDB_AUTH=basic requires OSIDB_USERNAME and OSIDB_PASSWORD")
     else:
         username = None
         password = None
@@ -85,7 +82,7 @@ def load_settings() -> Settings:
 
     return Settings(
         base_url=base,
-        auth=auth,  # type: ignore[arg-type]
+        auth=auth,  # ty:ignore[invalid-argument-type]
         username=username,
         password=password,
         verify_ssl=_env_bool("OSIDB_VERIFY_SSL", True),

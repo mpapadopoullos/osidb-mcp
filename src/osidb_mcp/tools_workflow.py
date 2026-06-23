@@ -5,8 +5,6 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-import requests
-
 from osidb_mcp.errors import error_response
 from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import get_session
@@ -29,7 +27,7 @@ def flaw_promote(flaw_id: str) -> dict[str, Any]:
     """
     session = get_session()
     try:
-        result = session.flaws.promote(flaw_id)
+        result = session.flaws.promote(flaw_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -49,7 +47,7 @@ def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
     """
     session = get_session()
     try:
-        result = session.flaws.reject(flaw_id, {"reason": reason})
+        result = session.flaws.reject(flaw_id, {"reason": reason})  # ty:ignore[unresolved-attribute]
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -68,7 +66,7 @@ def flaw_reset(flaw_id: str) -> dict[str, Any]:
     """
     session = get_session()
     try:
-        result = session.flaws.reset(flaw_id)
+        result = session.flaws.reset(flaw_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -90,7 +88,7 @@ def flaw_revert(flaw_id: str) -> dict[str, Any]:
     """
     session = get_session()
     try:
-        result = session.flaws.revert(flaw_id)
+        result = session.flaws.revert(flaw_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "classification": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)

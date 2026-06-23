@@ -54,9 +54,7 @@ def merge_extra_query(
     if not extra:
         return base
     if len(extra) > EXTRAS_MAX_KEYS:
-        raise ValueError(
-            f"extra_query may contain at most {EXTRAS_MAX_KEYS} keys"
-        )
+        raise ValueError(f"extra_query may contain at most {EXTRAS_MAX_KEYS} keys")
     merged = dict(base)
     for key, raw in extra.items():
         if key not in allowlist:

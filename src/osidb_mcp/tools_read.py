@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime
 import importlib
 from typing import Any, Literal
-from uuid import UUID
 
 import requests
 from osidb_bindings.bindings.python_client.api.osidb import osidb_whoami_retrieve
@@ -41,10 +40,9 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workfl
 )
 
 from osidb_mcp.errors import http_error_payload
-from osidb_mcp.resolve import parse_uuid_param, resolve_flaw_uuid
 from osidb_mcp.query_filters import (
-    AFFECTS_EXTRA_KEYS,
     AFFECT_CVSS_SCORES_EXTRA_KEYS,
+    AFFECTS_EXTRA_KEYS,
     DEFAULT_LIST_LIMIT,
     FLAWS_EXTRA_KEYS,
     LABELS_EXTRA_KEYS,
@@ -52,6 +50,7 @@ from osidb_mcp.query_filters import (
     clamp_offset,
     merge_extra_query,
 )
+from osidb_mcp.resolve import parse_uuid_param, resolve_flaw_uuid
 from osidb_mcp.serialize import paginated_summary, to_jsonable
 from osidb_mcp.session_holder import get_session
 
@@ -129,9 +128,7 @@ def osidb_status() -> dict[str, Any]:
 def osidb_whoami() -> dict[str, Any]:
     try:
         s = get_session()
-        r = osidb_whoami_retrieve.sync_detailed(
-            client=s.get_client_with_new_access_token()
-        )
+        r = osidb_whoami_retrieve.sync_detailed(client=s.get_client_with_new_access_token())
         if r.parsed is None:
             return {
                 "ok": False,
@@ -155,12 +152,8 @@ def flaw_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        flaw = get_session().flaws.retrieve(
-            flaw_id, api_version=api_version, **kw
-        )
-        return _envelope_osidb_flaw_uuid_when_no_cve(
-            {"ok": True, "flaw": to_jsonable(flaw)}
-        )
+        flaw = get_session().flaws.retrieve(flaw_id, api_version=api_version, **kw)
+        return _envelope_osidb_flaw_uuid_when_no_cve({"ok": True, "flaw": to_jsonable(flaw)})
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -247,9 +240,7 @@ def _build_flaws_kwargs(
     if cb is not None:
         kw["changed_before"] = cb
     if major_incident_state:
-        kw["major_incident_state"] = OsidbApiV2FlawsListMajorIncidentState(
-            major_incident_state
-        )
+        kw["major_incident_state"] = OsidbApiV2FlawsListMajorIncidentState(major_incident_state)
     if major_incident_state_in:
         kw["major_incident_state__in"] = _major_incident_in(major_incident_state_in)
     if source:
@@ -512,15 +503,11 @@ def affects_list(
         if flaw_uuid:
             kw["flaw__uuid"] = _parse_uuid_param("flaw_uuid", flaw_uuid)
         if flaw_uuid_in:
-            kw["flaw__uuid__in"] = [
-                _parse_uuid_param("flaw_uuid_in", u) for u in flaw_uuid_in
-            ]
+            kw["flaw__uuid__in"] = [_parse_uuid_param("flaw_uuid_in", u) for u in flaw_uuid_in]
         if flaw_workflow_state:
             kw["flaw__workflow_state"] = _affects_workflow_in(flaw_workflow_state)
         if flaw_workflow_state_in:
-            kw["flaw__workflow_state__in"] = _affects_workflow_in(
-                flaw_workflow_state_in
-            )
+            kw["flaw__workflow_state__in"] = _affects_workflow_in(flaw_workflow_state_in)
         if flaw_impact:
             kw["flaw__impact"] = OsidbApiV2AffectsListFlawImpact(flaw_impact)
         if flaw_impact_in:
@@ -582,15 +569,12 @@ def _finalize_trackers_kwargs(merged: dict[str, Any]) -> dict[str, Any]:
     out = dict(merged)
     if "type" in out:
         v = out.pop("type")
-        out["type_"] = (
-            OsidbApiV2TrackersListType(v) if isinstance(v, str) else v
-        )
+        out["type_"] = OsidbApiV2TrackersListType(v) if isinstance(v, str) else v
     if "type__in" in out:
         v = out.pop("type__in")
         if isinstance(v, list):
             out["type_in"] = [
-                OsidbApiV2TrackersListTypeInItem(x) if isinstance(x, str) else x
-                for x in v
+                OsidbApiV2TrackersListTypeInItem(x) if isinstance(x, str) else x for x in v
             ]
         else:
             out["type_in"] = v
@@ -636,13 +620,10 @@ def trackers_list(
         if affects_flaw_cve_id_in:
             kw["affects__flaw__cve_id__in"] = affects_flaw_cve_id_in
         if affects_flaw_uuid:
-            kw["affects__flaw__uuid"] = _parse_uuid_param(
-                "affects_flaw_uuid", affects_flaw_uuid
-            )
+            kw["affects__flaw__uuid"] = _parse_uuid_param("affects_flaw_uuid", affects_flaw_uuid)
         if affects_flaw_uuid_in:
             kw["affects__flaw__uuid__in"] = [
-                _parse_uuid_param("affects_flaw_uuid_in", u)
-                for u in affects_flaw_uuid_in
+                _parse_uuid_param("affects_flaw_uuid_in", u) for u in affects_flaw_uuid_in
             ]
         if affects_ps_module_in:
             kw["affects__ps_module__in"] = affects_ps_module_in
@@ -678,9 +659,7 @@ def trackers_list(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        merged = merge_extra_query(
-            kw, extra_query, allowlist=TRACKERS_EXTRA_KEYS
-        )
+        merged = merge_extra_query(kw, extra_query, allowlist=TRACKERS_EXTRA_KEYS)
         merged = _finalize_trackers_kwargs(merged)
         resp = get_session().trackers.retrieve_list(
             api_version=api_version,
@@ -698,6 +677,7 @@ def trackers_list(
 
 def _make_flaw_subresource_list(accessor_name: str):
     """Factory for flaw sub-resource list functions (comments, references, etc.)."""
+
     def _list_fn(
         flaw_id: str,
         *,
@@ -710,11 +690,15 @@ def _make_flaw_subresource_list(accessor_name: str):
         try:
             accessor = getattr(get_session().flaws, accessor_name)
             resp = accessor.retrieve_list(
-                flaw_id, api_version=api_version, limit=lim, offset=off,
+                flaw_id,
+                api_version=api_version,
+                limit=lim,
+                offset=off,
             )
             return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
         except requests.RequestException as e:
             return {"ok": False, **http_error_payload(e)}
+
     _list_fn.__name__ = f"flaw_{accessor_name}_list"
     _list_fn.__qualname__ = f"flaw_{accessor_name}_list"
     return _list_fn
@@ -846,10 +830,8 @@ def affect_cvss_scores_list(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        merged = merge_extra_query(
-            kw, extra_query, allowlist=AFFECT_CVSS_SCORES_EXTRA_KEYS
-        )
-        resp = get_session().affects.cvss_scores.retrieve_list(
+        merged = merge_extra_query(kw, extra_query, allowlist=AFFECT_CVSS_SCORES_EXTRA_KEYS)
+        resp = get_session().affects.cvss_scores.retrieve_list(  # ty:ignore[unresolved-attribute]
             aid,
             api_version=api_version,
             **merged,
@@ -879,7 +861,7 @@ def affect_cvss_score_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        score = get_session().affects.cvss_scores.retrieve(
+        score = get_session().affects.cvss_scores.retrieve(  # ty:ignore[unresolved-attribute]
             aid,
             cvss_score_id,
             api_version=api_version,
@@ -897,6 +879,7 @@ def affect_cvss_score_get(
 
 def _make_flaw_subresource_get(accessor_name: str, response_key: str):
     """Factory for flaw sub-resource get functions (comment, reference, etc.)."""
+
     def _get_fn(
         flaw_id: str,
         sub_id: str,
@@ -916,6 +899,7 @@ def _make_flaw_subresource_get(accessor_name: str, response_key: str):
             return {"ok": True, response_key: to_jsonable(obj)}
         except requests.RequestException as e:
             return {"ok": False, **http_error_payload(e)}
+
     _get_fn.__name__ = f"flaw_{response_key}_get"
     _get_fn.__qualname__ = f"flaw_{response_key}_get"
     return _get_fn
@@ -935,8 +919,10 @@ def flaw_label_get(
     api_version: str | None = None,
 ) -> dict[str, Any]:
     try:
-        label = get_session().flaws.labels.retrieve(
-            flaw_id, label_id, api_version=api_version,
+        label = get_session().flaws.labels.retrieve(  # ty:ignore[unresolved-attribute]
+            flaw_id,
+            label_id,
+            api_version=api_version,
         )
         return {"ok": True, "label": to_jsonable(label)}
     except requests.RequestException as e:
@@ -976,6 +962,7 @@ def alerts_list(
             from osidb_bindings.bindings.python_client.models.osidb_api_v1_alerts_list_parent_model import (
                 OsidbApiV1AlertsListParentModel,
             )
+
             kw["parent_model"] = OsidbApiV1AlertsListParentModel(parent_model)
         if name:
             kw["name"] = name
@@ -983,6 +970,7 @@ def alerts_list(
             from osidb_bindings.bindings.python_client.models.osidb_api_v1_alerts_list_alert_type import (
                 OsidbApiV1AlertsListAlertType,
             )
+
             kw["alert_type"] = OsidbApiV1AlertsListAlertType(alert_type)
         if include_fields:
             kw["include_fields"] = include_fields
@@ -1017,7 +1005,8 @@ def alert_get(
             kw["exclude_fields"] = exclude_fields
         return _raw_api_call(
             "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_alerts_retrieve",
-            uid, **kw,
+            uid,
+            **kw,
         )
     except (requests.RequestException, ValueError) as e:
         if isinstance(e, ValueError):
@@ -1118,7 +1107,8 @@ def exploits_supported_products(
         off = clamp_offset(offset)
         return _raw_api_call(
             "osidb_bindings.bindings.python_client.api.exploits.exploits_api_v1_supported_products_list",
-            limit=lim, offset=off,
+            limit=lim,
+            offset=off,
         )
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
@@ -1210,7 +1200,8 @@ def sync_managers_list(
         off = clamp_offset(offset)
         return _raw_api_call(
             "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_sync_managers_list",
-            limit=lim, offset=off,
+            limit=lim,
+            offset=off,
         )
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
@@ -1267,7 +1258,8 @@ def workflow_get(
             kw["verbose"] = True
         return _raw_api_call(
             "osidb_bindings.bindings.python_client.api.workflows.workflows_api_v1_workflows_retrieve_2",
-            workflow_id, **kw,
+            workflow_id,
+            **kw,
         )
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
@@ -1277,9 +1269,7 @@ def workflow_get(
 
 _IMPACTS_ORDER = ("CRITICAL", "IMPORTANT", "MODERATE", "LOW")
 _WORKFLOW_STATES_SUMMARY = tuple(
-    str(x.value)
-    for x in OsidbApiV2FlawsListWorkflowStateItem
-    if x.value
+    str(x.value) for x in OsidbApiV2FlawsListWorkflowStateItem if x.value
 )
 
 
@@ -1641,7 +1631,7 @@ def tracker_suggestions(
         return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
     try:
-        result = session.trackers.file(
+        result = session.trackers.file(  # ty:ignore[unresolved-attribute]
             {"flaw_uuids": [resolved_id]},
             exclude_existing_trackers=exclude_existing_trackers,
         )
@@ -1650,8 +1640,7 @@ def tracker_suggestions(
         streams = data.get("streams_components", [])
         not_applicable = data.get("not_applicable", [])
         recommended = [
-            s for s in streams
-            if s.get("selected") or (s.get("offer") or {}).get("selected")
+            s for s in streams if s.get("selected") or (s.get("offer") or {}).get("selected")
         ]
 
         data["summary"] = {
