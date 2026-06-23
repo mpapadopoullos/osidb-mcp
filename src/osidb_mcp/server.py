@@ -97,14 +97,20 @@ def create_server(settings: Settings) -> FastMCP:
         description=(
             "List affects with ps_module / ps_component / ps_update_stream and flaw__ filters "
             "(e.g. flaw_workflow_state_in, flaw_impact_in, flaw_components_in). "
-            "Scope by flaw using ``flaw_cve_id`` / ``flaw_cve_id_in`` or ``flaw_uuid`` / ``flaw_uuid_in`` when there is no CVE."
+            "Scope by flaw using ``flaw_cve_id`` / ``flaw_cve_id_in`` or ``flaw_uuid`` / ``flaw_uuid_in`` when there is no CVE. "
+            "Supports ``affectedness``, ``resolution``, ``impact`` filters on the affect itself. "
+            "Date range filters: ``created_dt_gte``, ``created_dt_lte``, ``updated_dt_gte``, ``updated_dt_lte`` (ISO 8601). "
+            "Ordering: ``order`` (comma-separated, e.g. \"-created_dt,ps_component\")."
         ),
     )(tools_read.affects_list)
     mcp.tool(
         name="trackers_list",
         description=(
             "List trackers (filings) with optional CVE / ps_module / ps_component filters. "
-            "Scope by flaw using ``affects_flaw_cve_id`` (or ``_in``) or ``affects_flaw_uuid`` (or ``_in``) when there is no CVE."
+            "Scope by flaw using ``affects_flaw_cve_id`` (or ``_in``) or ``affects_flaw_uuid`` (or ``_in``) when there is no CVE. "
+            "Supports ``ps_update_stream``, ``status``, ``resolution``, ``external_system_id``, ``embargoed`` filters. "
+            "Date range filters: ``created_dt_gte``, ``created_dt_lte``, ``updated_dt_gte``, ``updated_dt_lte`` (ISO 8601). "
+            "Ordering: ``order`` (comma-separated, e.g. \"-created_dt\")."
         ),
     )(tools_read.trackers_list)
     mcp.tool(
@@ -159,6 +165,10 @@ def create_server(settings: Settings) -> FastMCP:
             "Paginated global OSIDB labels (``GET /labels``). ``extra_query`` allowlisted (typically ``limit``/``offset``)."
         ),
     )(tools_read.labels_list)
+    mcp.tool(
+        name="label_get",
+        description="Retrieve a single global label by UUID (read-only).",
+    )(tools_read.label_get)
     mcp.tool(
         name="affect_cvss_scores_list",
         description=(
@@ -273,6 +283,43 @@ def create_server(settings: Settings) -> FastMCP:
             "May fail if the exploits integration is not enabled on this OSIDB instance."
         ),
     )(tools_read.get_pending_exploit_actions)
+    mcp.tool(
+        name="exploits_supported_products",
+        description=(
+            "List PsModule names in exploit-monitoring scope "
+            "(GET /exploits/api/v1/supported-products)."
+        ),
+    )(tools_read.exploits_supported_products)
+    mcp.tool(
+        name="audit_list",
+        description=(
+            "List audit/history events from pghistory change tracking "
+            "(GET /osidb/api/v1/audit). Answers 'what changed on this flaw/affect?' "
+            "Filters: pgh_obj_id, pgh_obj_model, pgh_label, pgh_slug, created_after/before."
+        ),
+    )(tools_read.audit_list)
+    mcp.tool(
+        name="collectors_status",
+        description=(
+            "Get the status of all OSIDB collectors and collected data "
+            "(GET /collectors/api/v1/status). Shows collector state "
+            "(PENDING/BLOCKED/READY/RUNNING), data completeness, and errors."
+        ),
+    )(tools_read.collectors_status)
+    mcp.tool(
+        name="sync_managers_list",
+        description=(
+            "List Celery task sync managers with scheduling, failure counts, "
+            "and reschedule info (GET /osidb/api/v1/sync-managers)."
+        ),
+    )(tools_read.sync_managers_list)
+    mcp.tool(
+        name="flaws_index",
+        description=(
+            "Get minimal flaw ID + timestamp pairs for efficient polling/sync "
+            "(GET /osidb/api/v2/flaws/index). Optional id_type filter."
+        ),
+    )(tools_read.flaws_index)
 
     # -- AEGIS AI-assisted analysis tools --
     mcp.tool(
@@ -519,6 +566,47 @@ def create_server(settings: Settings) -> FastMCP:
         )(tools_write.flaw_package_version_add)
 
         mcp.tool(
+            name="flaw_package_version_update",
+            description=(
+                "Update a package version entry on a flaw. "
+                "Auto-fetches the current entry for optimistic concurrency. "
+                "Versions list is replaced entirely (not merged) when provided."
+            ),
+        )(tools_write.flaw_package_version_update)
+
+        mcp.tool(
+            name="flaw_package_version_remove",
+            description=(
+                "Delete a package version entry from a flaw "
+                "(DELETE /osidb/api/v1/flaws/{id}/package_versions/{sub_id})."
+            ),
+        )(tools_write.flaw_package_version_remove)
+
+        mcp.tool(
+            name="affect_cvss_score_add",
+            description=(
+                "Add a CVSS score to an affect. Score is auto-computed from the vector string. "
+                "Unique constraint: one per (affect, cvss_version, issuer)."
+            ),
+        )(tools_write.affect_cvss_score_add)
+
+        mcp.tool(
+            name="affect_cvss_score_remove",
+            description=(
+                "Delete a CVSS score from an affect. Only RH-issued scores can be deleted."
+            ),
+        )(tools_write.affect_cvss_score_remove)
+
+        mcp.tool(
+            name="tracker_update",
+            description=(
+                "Update a tracker. Auto-fetches the current tracker for optimistic concurrency "
+                "then merges caller-provided field overrides. "
+                "Can modify associated affects -- removed affects have their tracker cleared."
+            ),
+        )(tools_write.tracker_update)
+
+        mcp.tool(
             name="affects_bulk_create",
             description=(
                 "Bulk-create affects in one API call "
@@ -582,5 +670,35 @@ def create_server(settings: Settings) -> FastMCP:
                 "PRE_SECONDARY_ASSESSMENT -> TRIAGE -> NEW."
             ),
         )(tools_workflow.flaw_revert)
+
+        mcp.tool(
+            name="workflow_adjust",
+            description=(
+                "Force recalculation of a flaw's workflow classification "
+                "(POST /workflows/api/v1/workflows/{id}/adjust). "
+                "Useful after external changes that might have changed the flaw's "
+                "applicable workflow."
+            ),
+        )(tools_workflow.workflow_adjust)
+
+        mcp.tool(
+            name="trackers_multi_flaw_file",
+            description=(
+                "File trackers across multiple related flaws for shared streams. "
+                "Resolves all flaw IDs, gets suggestions covering all flaws at once, "
+                "and files trackers for shared (ps_update_stream, ps_component) pairs. "
+                "Use dry_run=true to preview without filing."
+            ),
+        )(tools_write.trackers_multi_flaw_file)
+
+        mcp.tool(
+            name="flaw_save",
+            description=(
+                "Composite flaw save: update flaw + manage affects + manage labels in one call. "
+                "Orchestrates: PUT flaw -> bulk delete removed affects -> bulk create new affects "
+                "-> bulk update modified affects -> add/remove labels. "
+                "Partial success reporting: completed + failed steps."
+            ),
+        )(tools_write.flaw_save)
 
     return mcp

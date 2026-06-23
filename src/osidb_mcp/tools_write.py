@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import importlib
 from typing import Any
-from uuid import UUID
 
 import requests
 
+from uuid import UUID
+
+
 from osidb_mcp.errors import http_error_payload
+from osidb_mcp.resolve import resolve_flaw_uuid
 from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import current_settings, get_session
+
+
+def _error_response(exc: BaseException) -> dict[str, Any]:
+    if isinstance(exc, requests.RequestException):
+        return {"ok": False, **http_error_payload(exc)}
+    return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
 _FLAW_FIELDS = (
     "title", "comment_zero", "embargoed", "cve_id", "impact", "components",
@@ -23,12 +32,6 @@ _AFFECT_FIELDS = (
     "ps_update_stream", "purl", "delegated_resolution",
     "not_affected_justification",
 )
-
-
-def _error_response(exc: BaseException) -> dict[str, Any]:
-    if isinstance(exc, requests.RequestException):
-        return {"ok": False, **http_error_payload(exc)}
-    return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
 
 def _create_subresources(
@@ -746,8 +749,13 @@ def trackers_bulk_file(
     session = get_session()
 
     try:
+        resolved_id = resolve_flaw_uuid(session, flaw_id)
+    except Exception as exc:
+        return _error_response(exc)
+
+    try:
         suggestions = session.trackers.file(
-            {"flaw_uuids": [flaw_id]},
+            {"flaw_uuids": [resolved_id]},
             exclude_existing_trackers=exclude_existing_trackers,
         )
         suggestions_data = to_jsonable(suggestions)
@@ -994,8 +1002,8 @@ def flaw_label_add(
 
     try:
         flaw_uuid = UUID(str(flaw_id).strip())
-    except ValueError:
-        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
 
     kw: dict[str, Any] = {"label": label}
     if state:
@@ -1038,8 +1046,8 @@ def flaw_label_remove(
     """
     try:
         flaw_uuid = UUID(str(flaw_id).strip())
-    except ValueError:
-        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
 
     try:
         client = get_session().get_client_with_new_access_token()
@@ -1288,8 +1296,8 @@ def flaw_package_version_add(
 
     try:
         flaw_uuid = UUID(str(flaw_id).strip())
-    except ValueError:
-        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID"}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
 
     session = get_session()
     try:
@@ -1384,3 +1392,511 @@ def affects_bulk_delete(
         return {"ok": True, "deleted": affect_uuids}
     except Exception as exc:
         return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_update / flaw_package_version_remove
+# ---------------------------------------------------------------------------
+
+def flaw_package_version_update(
+    flaw_id: str,
+    package_version_id: str,
+    *,
+    package: str | None = None,
+    versions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Update a package version entry on a flaw.
+
+    Auto-fetches the current entry for optimistic concurrency. Versions list
+    is replaced entirely (not merged) when provided.
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        package_version_id: Package version UUID (required).
+        package: New package name.
+        versions: Replacement list of version dicts, each with ``version`` (str).
+    """
+    try:
+        flaw_uuid = UUID(str(flaw_id).strip())
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+    session = get_session()
+
+    try:
+        current = session.flaws.package_versions.retrieve(
+            flaw_id=str(flaw_uuid), id=package_version_id,
+        )
+    except Exception as exc:
+        return _error_response(exc)
+
+    data = current.to_dict()
+    data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+
+    if package is not None:
+        data["package"] = package
+    if versions is not None:
+        data["versions"] = versions
+
+    try:
+        result = session.flaws.package_versions.update(
+            flaw_id=str(flaw_uuid), id=package_version_id, form_data=data,
+        )
+        return {"ok": True, "package_version": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+def flaw_package_version_remove(
+    flaw_id: str,
+    package_version_id: str,
+) -> dict[str, Any]:
+    """Delete a package version entry from a flaw.
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        package_version_id: Package version UUID to delete.
+    """
+    try:
+        flaw_uuid = UUID(str(flaw_id).strip())
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+    session = get_session()
+    try:
+        session.flaws.package_versions.delete(
+            flaw_id=str(flaw_uuid), id=package_version_id,
+        )
+        return {"ok": True, "deleted": package_version_id}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_score_add / affect_cvss_score_remove
+# ---------------------------------------------------------------------------
+
+def affect_cvss_score_add(
+    affect_id: str,
+    vector: str,
+    *,
+    cvss_version: str = "V3",
+    issuer: str = "RH",
+    comment: str = "",
+    embargoed: bool | None = None,
+) -> dict[str, Any]:
+    """Add a CVSS score to an affect.
+
+    Score is auto-computed from the vector string by OSIDB.
+    Unique constraint: one per (affect, cvss_version, issuer).
+
+    Args:
+        affect_id: Affect UUID (required).
+        vector: CVSS vector string (required).
+        cvss_version: V2, V3, or V4 (default V3).
+        issuer: RH, NIST, CVEORG, OSV, or CISA (default RH).
+        comment: Optional comment (RH scores only).
+        embargoed: Override embargo status; auto-fetched from affect if omitted.
+    """
+    try:
+        UUID(str(affect_id).strip())
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+    session = get_session()
+
+    form_data: dict[str, Any] = {
+        "vector": vector,
+        "issuer": issuer,
+        "cvss_version": cvss_version,
+    }
+    if comment:
+        form_data["comment"] = comment
+
+    if embargoed is not None:
+        form_data["embargoed"] = embargoed
+    else:
+        try:
+            affect = session.affects.retrieve(affect_id)
+            form_data["embargoed"] = getattr(affect, "embargoed", False)
+        except Exception as exc:
+            return _error_response(exc)
+
+    try:
+        result = session.affects.cvss_scores.create(
+            affect_id=affect_id, form_data=form_data,
+        )
+        return {"ok": True, "cvss_score": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+def affect_cvss_score_remove(
+    affect_id: str,
+    cvss_score_id: str,
+) -> dict[str, Any]:
+    """Delete a CVSS score from an affect. Only RH-issued scores can be deleted.
+
+    Args:
+        affect_id: Affect UUID (required).
+        cvss_score_id: CVSS score UUID to delete.
+    """
+    try:
+        UUID(str(affect_id).strip())
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
+
+    session = get_session()
+    try:
+        session.affects.cvss_scores.delete(affect_id=affect_id, id=cvss_score_id)
+        return {"ok": True, "deleted": cvss_score_id}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# tracker_update
+# ---------------------------------------------------------------------------
+
+def tracker_update(
+    tracker_id: str,
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    """Update a tracker.
+
+    Auto-fetches the current tracker for optimistic concurrency then merges
+    the caller-provided field overrides. Can modify associated affects --
+    removed affects have their tracker cleared.
+
+    Args:
+        tracker_id: Tracker UUID (required).
+        fields: Dict of fields to update (e.g. {"affects": ["uuid1", "uuid2"]}).
+    """
+    session = get_session()
+
+    try:
+        current = session.trackers.retrieve(tracker_id)
+    except Exception as exc:
+        return _error_response(exc)
+
+    form_data = current.to_dict()
+    form_data.update(fields)
+
+    try:
+        result = session.trackers.update(id=tracker_id, form_data=form_data)
+        return {"ok": True, "tracker": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# trackers_multi_flaw_file -- multi-flaw tracker filing (OSIM workflow)
+# ---------------------------------------------------------------------------
+
+
+def trackers_multi_flaw_file(
+    flaw_ids: list[str],
+    *,
+    dry_run: bool = False,
+    only_selected: bool = True,
+    exclude_existing_trackers: bool = True,
+) -> dict[str, Any]:
+    """File trackers across multiple related flaws for shared streams.
+
+    Implements OSIM's multi-flaw tracker filing workflow:
+    1. Resolve all flaw IDs to UUIDs
+    2. Get suggestions covering all flaws at once
+    3. For each shared (ps_update_stream, ps_component) pair, file a single
+       tracker covering affects from all flaws
+
+    Args:
+        flaw_ids: List of flaw UUIDs or CVE ids (at least 2 recommended).
+        dry_run: If True, return what WOULD be filed without actually filing.
+        only_selected: If True (default), only file for recommended streams.
+        exclude_existing_trackers: Skip streams that already have trackers.
+
+    Returns:
+        JSON dict with filed trackers summary, successes, and failures.
+    """
+    if not flaw_ids:
+        return {"ok": False, "error": "bad_request", "detail": "flaw_ids must be non-empty"}
+
+    session = get_session()
+
+    resolved_ids = []
+    for fid in flaw_ids:
+        try:
+            resolved_ids.append(resolve_flaw_uuid(session, fid))
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": "resolution_failed",
+                "detail": f"Could not resolve '{fid}': {exc}",
+            }
+
+    try:
+        suggestions = session.trackers.file(
+            {"flaw_uuids": resolved_ids},
+            exclude_existing_trackers=exclude_existing_trackers,
+        )
+        suggestions_data = to_jsonable(suggestions)
+    except Exception as exc:
+        return _error_response(exc)
+
+    streams = suggestions_data.get("streams_components", [])
+    not_applicable = suggestions_data.get("not_applicable", [])
+
+    if only_selected:
+        to_file = [
+            s for s in streams
+            if s.get("selected") or (s.get("offer") or {}).get("selected")
+        ]
+    else:
+        to_file = streams
+
+    if not to_file:
+        return {
+            "ok": True,
+            "filed": 0,
+            "message": "No shared streams matched the filing criteria.",
+            "not_applicable_count": len(not_applicable),
+            "flaw_count": len(resolved_ids),
+        }
+
+    if dry_run:
+        preview = [
+            {
+                "ps_update_stream": s.get("ps_update_stream"),
+                "ps_component": s.get("ps_component"),
+                "affect_uuids": [
+                    (a.get("uuid") if isinstance(a, dict) else a)
+                    for a in (s.get("affects") or [s.get("affect")])
+                    if a
+                ],
+                "selected": s.get("selected", False),
+            }
+            for s in to_file
+        ]
+        return {
+            "ok": True,
+            "dry_run": True,
+            "would_file": len(preview),
+            "flaw_count": len(resolved_ids),
+            "streams": preview,
+            "not_applicable_count": len(not_applicable),
+        }
+
+    embargoed = (to_file[0].get("affect") or {}).get("embargoed", False)
+
+    successes = []
+    failures = []
+    for i, s in enumerate(to_file):
+        ps_update_stream = s.get("ps_update_stream")
+        affect_uuids = [
+            (a.get("uuid") if isinstance(a, dict) else a)
+            for a in (s.get("affects") or [s.get("affect")])
+            if a
+        ]
+        sync_to_bz = (i == len(to_file) - 1)
+
+        try:
+            result = session.trackers.create(
+                form_data={
+                    "affects": affect_uuids,
+                    "ps_update_stream": ps_update_stream,
+                    "embargoed": embargoed,
+                    "sync_to_bz": sync_to_bz,
+                }
+            )
+            successes.append({
+                "ps_update_stream": ps_update_stream,
+                "tracker": to_jsonable(result),
+            })
+        except Exception as exc:
+            failures.append({
+                "ps_update_stream": ps_update_stream,
+                "error": str(exc),
+            })
+
+    return {
+        "ok": len(failures) == 0,
+        "filed": len(successes),
+        "failed": len(failures),
+        "flaw_count": len(resolved_ids),
+        "successes": successes,
+        "failures": failures,
+    }
+
+
+# ---------------------------------------------------------------------------
+# flaw_save -- composite save (flaw + affects + labels in one call)
+# ---------------------------------------------------------------------------
+
+
+def flaw_save(
+    flaw_id: str,
+    *,
+    flaw_fields: dict[str, Any] | None = None,
+    new_affects: list[dict[str, Any]] | None = None,
+    modified_affects: list[dict[str, Any]] | None = None,
+    removed_affect_uuids: list[str] | None = None,
+    labels_to_add: list[str] | None = None,
+    labels_to_remove: list[str] | None = None,
+) -> dict[str, Any]:
+    """Composite flaw save: update flaw + manage affects + manage labels in sequence.
+
+    Orchestrates: PUT flaw -> bulk delete removed affects -> bulk create new affects
+    -> bulk update modified affects -> add/remove labels.
+
+    Partial success is reported: if the flaw update succeeds but a later step fails,
+    the response includes both completed and failed operations.
+
+    Args:
+        flaw_id: Flaw CVE id or UUID (required).
+        flaw_fields: Dict of flaw fields to update (same as flaw_update).
+        new_affects: List of new affect dicts to create (each needs ps_module,
+            ps_component, affectedness, embargoed).
+        modified_affects: List of affect dicts to update (each needs uuid and
+            updated_dt for optimistic concurrency, plus fields to change).
+        removed_affect_uuids: List of affect UUIDs to delete.
+        labels_to_add: List of label names to add to the flaw.
+        labels_to_remove: List of label UUIDs to remove from the flaw.
+
+    Returns:
+        JSON dict with results for each operation step.
+    """
+    session = get_session()
+
+    try:
+        resolved_id = resolve_flaw_uuid(session, flaw_id)
+    except Exception as exc:
+        return _error_response(exc)
+
+    results: dict[str, Any] = {"ok": True, "flaw_id": resolved_id, "steps": {}}
+
+    # Step 1: Update flaw fields
+    if flaw_fields:
+        try:
+            current_flaw = session.flaws.retrieve(resolved_id)
+            form_data = current_flaw.to_dict()
+            for field in _FLAW_FIELDS:
+                if field in flaw_fields:
+                    form_data[field] = flaw_fields[field]
+            updated = session.flaws.update(id=resolved_id, form_data=form_data)
+            results["steps"]["flaw_update"] = {"ok": True, "flaw": to_jsonable(updated)}
+        except Exception as exc:
+            results["ok"] = False
+            results["steps"]["flaw_update"] = {"ok": False, "error": str(exc)}
+            return results
+
+    # Step 2: Delete removed affects
+    if removed_affect_uuids:
+        try:
+            session.affects.bulk_destroy(
+                {"affect_uuids": removed_affect_uuids}
+            )
+            results["steps"]["affects_deleted"] = {
+                "ok": True, "count": len(removed_affect_uuids),
+            }
+        except Exception as exc:
+            results["ok"] = False
+            results["steps"]["affects_deleted"] = {"ok": False, "error": str(exc)}
+
+    # Step 3: Bulk create new affects
+    if new_affects:
+        try:
+            for aff in new_affects:
+                aff.setdefault("flaw", resolved_id)
+            created = session.affects.bulk_create(new_affects)
+            results["steps"]["affects_created"] = {
+                "ok": True, "count": len(new_affects),
+                "affects": to_jsonable(created),
+            }
+        except Exception as exc:
+            results["ok"] = False
+            results["steps"]["affects_created"] = {"ok": False, "error": str(exc)}
+
+    # Step 4: Bulk update modified affects
+    if modified_affects:
+        try:
+            updated_affects = session.affects.bulk_update(modified_affects)
+            results["steps"]["affects_updated"] = {
+                "ok": True, "count": len(modified_affects),
+                "affects": to_jsonable(updated_affects),
+            }
+        except Exception as exc:
+            results["ok"] = False
+            results["steps"]["affects_updated"] = {"ok": False, "error": str(exc)}
+
+    # Step 5: Add labels
+    if labels_to_add:
+        added = []
+        label_errors = []
+        try:
+            flaw_uuid = UUID(str(resolved_id).strip())
+        except ValueError as e:
+            results["ok"] = False
+            results["steps"]["labels_added"] = {"ok": False, "error": str(e)}
+            return results
+
+        client = session.get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_labels_create,
+        )
+        from osidb_bindings.bindings.python_client.models.flaw_label_request import (
+            FlawLabelRequest,
+        )
+        for label_name in labels_to_add:
+            try:
+                body = FlawLabelRequest(label=label_name)
+                r = osidb_api_v1_flaws_labels_create.sync_detailed(
+                    flaw_uuid, client=client, body=body,
+                )
+                if r.parsed:
+                    added.append(to_jsonable(r.parsed.to_dict()))
+                else:
+                    label_errors.append({"label": label_name, "error": f"status {r.status_code}"})
+            except Exception as exc:
+                label_errors.append({"label": label_name, "error": str(exc)})
+
+        results["steps"]["labels_added"] = {
+            "ok": len(label_errors) == 0,
+            "added": len(added),
+            "errors": label_errors,
+        }
+        if label_errors:
+            results["ok"] = False
+
+    # Step 6: Remove labels
+    if labels_to_remove:
+        removed = []
+        label_errors = []
+        try:
+            flaw_uuid = UUID(str(resolved_id).strip())
+        except ValueError as e:
+            results["ok"] = False
+            results["steps"]["labels_removed"] = {"ok": False, "error": str(e)}
+            return results
+
+        client = session.get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_labels_destroy,
+        )
+        for label_id in labels_to_remove:
+            try:
+                osidb_api_v1_flaws_labels_destroy.sync_detailed(
+                    flaw_uuid, label_id, client=client,
+                )
+                removed.append(label_id)
+            except Exception as exc:
+                label_errors.append({"label_id": label_id, "error": str(exc)})
+
+        results["steps"]["labels_removed"] = {
+            "ok": len(label_errors) == 0,
+            "removed": len(removed),
+            "errors": label_errors,
+        }
+        if label_errors:
+            results["ok"] = False
+
+    return results

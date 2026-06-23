@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import requests
@@ -97,5 +98,31 @@ def flaw_revert(flaw_id: str) -> dict[str, Any]:
     try:
         result = session.flaws.revert(flaw_id)
         return {"ok": True, "classification": to_jsonable(result)}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+def workflow_adjust(flaw_id: str) -> dict[str, Any]:
+    """Force recalculation of a flaw's workflow classification.
+
+    POST /workflows/api/v1/workflows/{id}/adjust -- useful after external
+    changes that might have changed the flaw's applicable workflow.
+
+    Args:
+        flaw_id: Flaw CVE id or internal UUID (required).
+
+    Returns:
+        JSON dict with ``ok``, ``classification`` (recalculated workflow info).
+    """
+    try:
+        client = get_session().get_client_with_new_access_token()
+        mod = importlib.import_module(
+            "osidb_bindings.bindings.python_client.api.workflows."
+            "workflows_api_v1_workflows_adjust_create"
+        )
+        r = mod.sync_detailed(flaw_id, client=client)
+        if r.parsed is None:
+            return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
+        return {"ok": True, "classification": to_jsonable(r.parsed.to_dict())}
     except Exception as exc:
         return _error_response(exc)

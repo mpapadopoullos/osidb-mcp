@@ -41,6 +41,7 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workfl
 )
 
 from osidb_mcp.errors import http_error_payload
+from osidb_mcp.resolve import resolve_flaw_uuid
 from osidb_mcp.query_filters import (
     AFFECTS_EXTRA_KEYS,
     AFFECT_CVSS_SCORES_EXTRA_KEYS,
@@ -476,7 +477,15 @@ def affects_list(
     flaw_impact_in: list[str] | None = None,
     flaw_components: list[str] | None = None,
     flaw_components_in: list[str] | None = None,
+    affectedness: str | None = None,
+    resolution: str | None = None,
+    impact: str | None = None,
     embargoed: bool | None = None,
+    created_dt_gte: str | None = None,
+    created_dt_lte: str | None = None,
+    updated_dt_gte: str | None = None,
+    updated_dt_lte: str | None = None,
+    order: str | None = None,
     include_fields: list[str] | None = None,
     exclude_fields: list[str] | None = None,
     limit: int = DEFAULT_LIST_LIMIT,
@@ -524,8 +533,28 @@ def affects_list(
             kw["flaw__components"] = flaw_components
         if flaw_components_in:
             kw["flaw__components__in"] = flaw_components_in
+        if affectedness:
+            kw["affectedness"] = affectedness
+        if resolution:
+            kw["resolution"] = resolution
+        if impact:
+            kw["impact"] = impact
         if embargoed is not None:
             kw["embargoed"] = embargoed
+        dt_gte = _parse_dt(created_dt_gte)
+        if dt_gte is not None:
+            kw["created_dt__gte"] = dt_gte
+        dt_lte = _parse_dt(created_dt_lte)
+        if dt_lte is not None:
+            kw["created_dt__lte"] = dt_lte
+        udt_gte = _parse_dt(updated_dt_gte)
+        if udt_gte is not None:
+            kw["updated_dt__gte"] = udt_gte
+        udt_lte = _parse_dt(updated_dt_lte)
+        if udt_lte is not None:
+            kw["updated_dt__lte"] = udt_lte
+        if order:
+            kw["order"] = [o.strip() for o in order.split(",")]
         if include_fields:
             kw["include_fields"] = include_fields
         if exclude_fields:
@@ -580,7 +609,17 @@ def trackers_list(
     affects_flaw_uuid_in: list[str] | None = None,
     affects_ps_module_in: list[str] | None = None,
     affects_ps_component_in: list[str] | None = None,
+    ps_update_stream: str | None = None,
     tracker_type: str | None = None,
+    status: str | None = None,
+    resolution: str | None = None,
+    external_system_id: str | None = None,
+    embargoed: bool | None = None,
+    created_dt_gte: str | None = None,
+    created_dt_lte: str | None = None,
+    updated_dt_gte: str | None = None,
+    updated_dt_lte: str | None = None,
+    order: str | None = None,
     include_fields: list[str] | None = None,
     exclude_fields: list[str] | None = None,
     limit: int = DEFAULT_LIST_LIMIT,
@@ -613,8 +652,32 @@ def trackers_list(
             kw["affects__ps_module__in"] = affects_ps_module_in
         if affects_ps_component_in:
             kw["affects__ps_component__in"] = affects_ps_component_in
+        if ps_update_stream:
+            kw["ps_update_stream"] = ps_update_stream
         if tracker_type:
             kw["type_"] = OsidbApiV2TrackersListType(tracker_type)
+        if status:
+            kw["status"] = status
+        if resolution:
+            kw["resolution"] = resolution
+        if external_system_id:
+            kw["external_system_id"] = external_system_id
+        if embargoed is not None:
+            kw["embargoed"] = embargoed
+        dt_gte = _parse_dt(created_dt_gte)
+        if dt_gte is not None:
+            kw["created_dt__gte"] = dt_gte
+        dt_lte = _parse_dt(created_dt_lte)
+        if dt_lte is not None:
+            kw["created_dt__lte"] = dt_lte
+        udt_gte = _parse_dt(updated_dt_gte)
+        if udt_gte is not None:
+            kw["updated_dt__gte"] = udt_gte
+        udt_lte = _parse_dt(updated_dt_lte)
+        if udt_lte is not None:
+            kw["updated_dt__lte"] = udt_lte
+        if order:
+            kw["order"] = [o.strip() for o in order.split(",")]
         if include_fields:
             kw["include_fields"] = include_fields
         if exclude_fields:
@@ -648,15 +711,9 @@ def flaw_comments_list(
     off = clamp_offset(offset)
     try:
         resp = get_session().flaws.comments.retrieve_list(
-            flaw_id,
-            api_version=api_version,
-            limit=lim,
-            offset=off,
+            flaw_id, api_version=api_version, limit=lim, offset=off,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -672,15 +729,9 @@ def flaw_references_list(
     off = clamp_offset(offset)
     try:
         resp = get_session().flaws.references.retrieve_list(
-            flaw_id,
-            api_version=api_version,
-            limit=lim,
-            offset=off,
+            flaw_id, api_version=api_version, limit=lim, offset=off,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -696,15 +747,9 @@ def flaw_cvss_scores_list(
     off = clamp_offset(offset)
     try:
         resp = get_session().flaws.cvss_scores.retrieve_list(
-            flaw_id,
-            api_version=api_version,
-            limit=lim,
-            offset=off,
+            flaw_id, api_version=api_version, limit=lim, offset=off,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -720,15 +765,9 @@ def flaw_acknowledgments_list(
     off = clamp_offset(offset)
     try:
         resp = get_session().flaws.acknowledgments.retrieve_list(
-            flaw_id,
-            api_version=api_version,
-            limit=lim,
-            offset=off,
+            flaw_id, api_version=api_version, limit=lim, offset=off,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -744,15 +783,9 @@ def flaw_labels_list(
     off = clamp_offset(offset)
     try:
         resp = get_session().flaws.labels.retrieve_list(
-            flaw_id,
-            api_version=api_version,
-            limit=lim,
-            offset=off,
+            flaw_id, api_version=api_version, limit=lim, offset=off,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -768,15 +801,9 @@ def flaw_package_versions_list(
     off = clamp_offset(offset)
     try:
         resp = get_session().flaws.package_versions.retrieve_list(
-            flaw_id,
-            api_version=api_version,
-            limit=lim,
-            offset=off,
+            flaw_id, api_version=api_version, limit=lim, offset=off,
         )
-        return {
-            "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
-        }
+        return {"ok": True, **paginated_summary(resp, limit=lim, offset=off)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -855,6 +882,29 @@ def labels_list(
         if isinstance(e, ValueError):
             return {"ok": False, "error": "bad_request", "detail": str(e)}
         return {"ok": False, **http_error_payload(e)}
+
+
+def label_get(
+    label_id: str,
+    *,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    """Retrieve a single global label by UUID.
+
+    Args:
+        label_id: Label UUID (required).
+        api_version: Optional API version override.
+    """
+    try:
+        result = get_session().labels.retrieve(
+            label_id,
+            api_version=api_version,
+        )
+        return {"ok": True, "label": to_jsonable(result)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+    except ValueError as e:
+        return {"ok": False, "error": "bad_request", "detail": str(e)}
 
 
 def affect_cvss_scores_list(
@@ -939,25 +989,8 @@ def flaw_comment_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        comment = get_session().flaws.comments.retrieve(
-            flaw_id, comment_id, api_version=api_version, **kw,
-        )
-        return {"ok": True, "comment": to_jsonable(comment)}
-    except requests.RequestException as e:
-        return {"ok": False, **http_error_payload(e)}
-
-
-def flaw_label_get(
-    flaw_id: str,
-    label_id: str,
-    *,
-    api_version: str | None = None,
-) -> dict[str, Any]:
-    try:
-        label = get_session().flaws.labels.retrieve(
-            flaw_id, label_id, api_version=api_version,
-        )
-        return {"ok": True, "label": to_jsonable(label)}
+        obj = get_session().flaws.comments.retrieve(flaw_id, comment_id, api_version=api_version, **kw)
+        return {"ok": True, "comment": to_jsonable(obj)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -976,10 +1009,8 @@ def flaw_acknowledgment_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        ack = get_session().flaws.acknowledgments.retrieve(
-            flaw_id, acknowledgment_id, api_version=api_version, **kw,
-        )
-        return {"ok": True, "acknowledgment": to_jsonable(ack)}
+        obj = get_session().flaws.acknowledgments.retrieve(flaw_id, acknowledgment_id, api_version=api_version, **kw)
+        return {"ok": True, "acknowledgment": to_jsonable(obj)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -998,10 +1029,8 @@ def flaw_reference_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        ref = get_session().flaws.references.retrieve(
-            flaw_id, reference_id, api_version=api_version, **kw,
-        )
-        return {"ok": True, "reference": to_jsonable(ref)}
+        obj = get_session().flaws.references.retrieve(flaw_id, reference_id, api_version=api_version, **kw)
+        return {"ok": True, "reference": to_jsonable(obj)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -1020,10 +1049,8 @@ def flaw_cvss_score_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        score = get_session().flaws.cvss_scores.retrieve(
-            flaw_id, cvss_score_id, api_version=api_version, **kw,
-        )
-        return {"ok": True, "cvss_score": to_jsonable(score)}
+        obj = get_session().flaws.cvss_scores.retrieve(flaw_id, cvss_score_id, api_version=api_version, **kw)
+        return {"ok": True, "cvss_score": to_jsonable(obj)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -1042,10 +1069,23 @@ def flaw_package_version_get(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        pv = get_session().flaws.package_versions.retrieve(
-            flaw_id, package_version_id, api_version=api_version, **kw,
+        obj = get_session().flaws.package_versions.retrieve(flaw_id, package_version_id, api_version=api_version, **kw)
+        return {"ok": True, "package_version": to_jsonable(obj)}
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def flaw_label_get(
+    flaw_id: str,
+    label_id: str,
+    *,
+    api_version: str | None = None,
+) -> dict[str, Any]:
+    try:
+        label = get_session().flaws.labels.retrieve(
+            flaw_id, label_id, api_version=api_version,
         )
-        return {"ok": True, "package_version": to_jsonable(pv)}
+        return {"ok": True, "label": to_jsonable(label)}
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -1208,6 +1248,146 @@ def exploits_flaw_data(
         )
         return _raw_api_call(mod, limit=lim, offset=off)
     except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+def exploits_supported_products(
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """List PsModule names in exploit-monitoring scope.
+
+    GET /exploits/api/v1/supported-products
+    """
+    try:
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.exploits.exploits_api_v1_supported_products_list",
+            limit=lim, offset=off,
+        )
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Audit ---
+
+
+def audit_list(
+    *,
+    pgh_obj_id: str | None = None,
+    pgh_obj_model: str | None = None,
+    pgh_label: str | None = None,
+    pgh_slug: str | None = None,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """List audit/history events from pghistory change tracking.
+
+    GET /osidb/api/v1/audit -- answers "what changed on this flaw/affect?"
+
+    Args:
+        pgh_obj_id: Filter by object UUID (e.g. a flaw or affect UUID).
+        pgh_obj_model: Filter by model name (e.g. "Flaw", "Affect").
+        pgh_label: Filter by event label (e.g. "update", "create").
+        pgh_slug: Filter by slug identifier.
+        created_after: ISO 8601 datetime lower bound for pgh_created_at.
+        created_before: ISO 8601 datetime upper bound for pgh_created_at.
+        limit: Max results per page (default 50, max 100).
+        offset: Pagination offset.
+    """
+    try:
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        kw: dict[str, Any] = {"limit": lim, "offset": off}
+        if pgh_obj_id:
+            kw["pgh_obj_id"] = pgh_obj_id.strip()
+        if pgh_obj_model:
+            kw["pgh_obj_model"] = pgh_obj_model.strip()
+        if pgh_label:
+            kw["pgh_label"] = pgh_label.strip()
+        if pgh_slug:
+            kw["pgh_slug"] = pgh_slug.strip()
+        if created_after:
+            kw["pgh_created_at"] = _parse_dt(created_after)
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_audit_list",
+            **kw,
+        )
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Collectors ---
+
+
+def collectors_status() -> dict[str, Any]:
+    """Get the status of all OSIDB collectors and collected data.
+
+    GET /collectors/api/v1/status -- shows collector state (PENDING/BLOCKED/READY/RUNNING),
+    data completeness, and errors.
+    """
+    try:
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.collectors.collectors_api_v1_status_retrieve",
+        )
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Sync Managers ---
+
+
+def sync_managers_list(
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """List Celery task sync managers with scheduling, failure counts, and reschedule info.
+
+    GET /osidb/api/v1/sync-managers
+    """
+    try:
+        lim = clamp_limit(limit)
+        off = clamp_offset(offset)
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_sync_managers_list",
+            limit=lim, offset=off,
+        )
+    except requests.RequestException as e:
+        return {"ok": False, **http_error_payload(e)}
+
+
+# --- Flaws Index ---
+
+
+def flaws_index(
+    *,
+    id_type: str | None = None,
+) -> dict[str, Any]:
+    """Get minimal flaw ID + timestamp pairs for efficient polling/sync.
+
+    GET /osidb/api/v2/flaws/index -- returns lightweight index data.
+
+    Args:
+        id_type: Type of identifier to return (e.g. "cve", "uuid").
+    """
+    try:
+        kw: dict[str, Any] = {}
+        if id_type:
+            kw["id_type"] = id_type.strip()
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_flaws_index_retrieve",
+            **kw,
+        )
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
         return {"ok": False, **http_error_payload(e)}
 
 
@@ -1601,8 +1781,15 @@ def tracker_suggestions(
     """
     session = get_session()
     try:
+        resolved_id = resolve_flaw_uuid(session, flaw_id)
+    except Exception as exc:
+        if isinstance(exc, requests.RequestException):
+            return {"ok": False, **http_error_payload(exc)}
+        return {"ok": False, "error": "osidb_error", "detail": str(exc)}
+
+    try:
         result = session.trackers.file(
-            {"flaw_uuids": [flaw_id]},
+            {"flaw_uuids": [resolved_id]},
             exclude_existing_trackers=exclude_existing_trackers,
         )
         data = to_jsonable(result)

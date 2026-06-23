@@ -6,6 +6,7 @@ import requests
 
 from osidb_mcp.tools_read import (
     affect_cvss_score_get,
+    affects_list,
     alert_get,
     alerts_list,
     exploits_cve_map,
@@ -19,7 +20,9 @@ from osidb_mcp.tools_read import (
     flaw_label_get,
     flaw_package_version_get,
     flaw_reference_get,
+    label_get,
     tracker_suggestions,
+    trackers_list,
     workflow_get,
     workflows_list,
 )
@@ -371,6 +374,10 @@ def test_workflow_get_verbose(mock_raw: MagicMock) -> None:
 @patch("osidb_mcp.tools_read.get_session")
 def test_tracker_suggestions_success(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [
@@ -402,8 +409,9 @@ def test_tracker_suggestions_success(mock_get_session: MagicMock) -> None:
     assert result["summary"]["recommended"] == 1
     assert result["summary"]["not_recommended"] == 1
     assert result["summary"]["not_applicable"] == 1
+    session.flaws.retrieve.assert_called_once_with("CVE-2024-1234")
     session.trackers.file.assert_called_once_with(
-        {"flaw_uuids": ["CVE-2024-1234"]},
+        {"flaw_uuids": ["70d80ad3-a8cf-4763-be08-799191d12860"]},
         exclude_existing_trackers=True,
     )
 
@@ -411,6 +419,10 @@ def test_tracker_suggestions_success(mock_get_session: MagicMock) -> None:
 @patch("osidb_mcp.tools_read.get_session")
 def test_tracker_suggestions_exclude_existing_false(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [],
@@ -422,20 +434,263 @@ def test_tracker_suggestions_exclude_existing_false(mock_get_session: MagicMock)
 
     assert result["ok"] is True
     session.trackers.file.assert_called_once_with(
-        {"flaw_uuids": ["CVE-2024-1234"]},
+        {"flaw_uuids": ["70d80ad3-a8cf-4763-be08-799191d12860"]},
         exclude_existing_trackers=False,
     )
 
 
 @patch("osidb_mcp.tools_read.get_session")
 def test_tracker_suggestions_http_error(mock_get_session: MagicMock) -> None:
+    """When the trackers.file API returns an HTTP error, surface it cleanly."""
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     resp = MagicMock()
     resp.status_code = 404
     resp.text = '{"detail": "Flaw not found"}'
     session.trackers.file.side_effect = requests.HTTPError(response=resp)
 
-    result = tracker_suggestions(flaw_id="nonexistent-uuid")
+    result = tracker_suggestions(flaw_id="CVE-2024-9999")
 
     assert result["ok"] is False
     assert result["status_code"] == 404
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_tracker_suggestions_cve_resolution_failure(mock_get_session: MagicMock) -> None:
+    """When CVE resolution fails, return a clean error without calling trackers.file."""
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = '{"detail": "Not found."}'
+    session.flaws.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = tracker_suggestions(flaw_id="CVE-9999-99999")
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+    session.trackers.file.assert_not_called()
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_tracker_suggestions_uuid_passthrough(mock_get_session: MagicMock) -> None:
+    """When flaw_id is a UUID, skip resolution and call trackers.file directly."""
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [],
+        "not_applicable": [],
+    }
+    session.trackers.file.return_value = suggestions
+
+    result = tracker_suggestions(flaw_id="70d80ad3-a8cf-4763-be08-799191d12860")
+
+    assert result["ok"] is True
+    session.flaws.retrieve.assert_not_called()
+    session.trackers.file.assert_called_once_with(
+        {"flaw_uuids": ["70d80ad3-a8cf-4763-be08-799191d12860"]},
+        exclude_existing_trackers=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# label_get
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_label_get_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    label_obj = MagicMock()
+    label_obj.to_dict.return_value = {
+        "uuid": "label-uuid-1",
+        "name": "psirt",
+        "description": "PSIRT label",
+    }
+    session.labels.retrieve.return_value = label_obj
+
+    result = label_get(label_id="label-uuid-1")
+
+    assert result["ok"] is True
+    assert result["label"]["name"] == "psirt"
+    session.labels.retrieve.assert_called_once_with(
+        "label-uuid-1", api_version=None,
+    )
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_label_get_not_found(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = '{"detail": "Not found."}'
+    session.labels.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = label_get(label_id="nonexistent-uuid")
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+
+
+# ---------------------------------------------------------------------------
+# affects_list - new filter parameters
+# ---------------------------------------------------------------------------
+
+
+def _mock_paginated_response(results: list | None = None):
+    resp = MagicMock()
+    resp.results = results or []
+    resp.count = len(resp.results)
+    resp.next = None
+    resp.previous = None
+    return resp
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_affects_list_date_range_filters(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve_list.return_value = _mock_paginated_response()
+
+    result = affects_list(
+        created_dt_gte="2026-01-01T00:00:00Z",
+        created_dt_lte="2026-06-01T00:00:00Z",
+        updated_dt_gte="2026-03-01T00:00:00Z",
+        updated_dt_lte="2026-06-01T00:00:00Z",
+    )
+
+    assert result["ok"] is True
+    call_kwargs = session.affects.retrieve_list.call_args[1]
+    assert "created_dt__gte" in call_kwargs
+    assert "created_dt__lte" in call_kwargs
+    assert "updated_dt__gte" in call_kwargs
+    assert "updated_dt__lte" in call_kwargs
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_affects_list_ordering(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve_list.return_value = _mock_paginated_response()
+
+    result = affects_list(order="-created_dt,ps_component")
+
+    assert result["ok"] is True
+    call_kwargs = session.affects.retrieve_list.call_args[1]
+    assert call_kwargs["order"] == ["-created_dt", "ps_component"]
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_affects_list_affectedness_resolution_impact(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve_list.return_value = _mock_paginated_response()
+
+    result = affects_list(
+        affectedness="AFFECTED",
+        resolution="DELEGATED",
+        impact="CRITICAL",
+    )
+
+    assert result["ok"] is True
+    call_kwargs = session.affects.retrieve_list.call_args[1]
+    assert call_kwargs["affectedness"] == "AFFECTED"
+    assert call_kwargs["resolution"] == "DELEGATED"
+    assert call_kwargs["impact"] == "CRITICAL"
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_affects_list_no_extra_filters_by_default(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve_list.return_value = _mock_paginated_response()
+
+    result = affects_list()
+
+    assert result["ok"] is True
+    call_kwargs = session.affects.retrieve_list.call_args[1]
+    assert "affectedness" not in call_kwargs
+    assert "resolution" not in call_kwargs
+    assert "created_dt__gte" not in call_kwargs
+    assert "order" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
+# trackers_list - new filter parameters
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_trackers_list_date_range_filters(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.trackers.retrieve_list.return_value = _mock_paginated_response()
+
+    result = trackers_list(
+        created_dt_gte="2026-01-01T00:00:00Z",
+        updated_dt_lte="2026-06-01T00:00:00Z",
+    )
+
+    assert result["ok"] is True
+    call_kwargs = session.trackers.retrieve_list.call_args[1]
+    assert "created_dt__gte" in call_kwargs
+    assert "updated_dt__lte" in call_kwargs
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_trackers_list_status_resolution_filters(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.trackers.retrieve_list.return_value = _mock_paginated_response()
+
+    result = trackers_list(
+        status="Closed",
+        resolution="ERRATA",
+        external_system_id="RHEL-12345",
+    )
+
+    assert result["ok"] is True
+    call_kwargs = session.trackers.retrieve_list.call_args[1]
+    assert call_kwargs["status"] == "Closed"
+    assert call_kwargs["resolution"] == "ERRATA"
+    assert call_kwargs["external_system_id"] == "RHEL-12345"
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_trackers_list_ps_update_stream_and_embargoed(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.trackers.retrieve_list.return_value = _mock_paginated_response()
+
+    result = trackers_list(
+        ps_update_stream="rhel-9.4.0.z",
+        embargoed=False,
+    )
+
+    assert result["ok"] is True
+    call_kwargs = session.trackers.retrieve_list.call_args[1]
+    assert call_kwargs["ps_update_stream"] == "rhel-9.4.0.z"
+    assert call_kwargs["embargoed"] is False
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_trackers_list_ordering(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.trackers.retrieve_list.return_value = _mock_paginated_response()
+
+    result = trackers_list(order="-created_dt")
+
+    assert result["ok"] is True
+    call_kwargs = session.trackers.retrieve_list.call_args[1]
+    assert call_kwargs["order"] == ["-created_dt"]
+
+
+@patch("osidb_mcp.tools_read.get_session")
+def test_trackers_list_no_extra_filters_by_default(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.trackers.retrieve_list.return_value = _mock_paginated_response()
+
+    result = trackers_list()
+
+    assert result["ok"] is True
+    call_kwargs = session.trackers.retrieve_list.call_args[1]
+    assert "status" not in call_kwargs
+    assert "resolution" not in call_kwargs
+    assert "created_dt__gte" not in call_kwargs
+    assert "order" not in call_kwargs
+    assert "ps_update_stream" not in call_kwargs

@@ -6,6 +6,8 @@ import requests
 
 from osidb_mcp.tools_write import (
     affect_add,
+    affect_cvss_score_add,
+    affect_cvss_score_remove,
     affect_remove,
     affect_update,
     affect_update_bulk,
@@ -24,11 +26,14 @@ from osidb_mcp.tools_write import (
     flaw_label_add,
     flaw_label_remove,
     flaw_package_version_add,
+    flaw_package_version_remove,
+    flaw_package_version_update,
     flaw_reference_add,
     flaw_reference_remove,
     flaw_reference_update,
     flaw_update,
     tracker_create,
+    tracker_update,
     trackers_bulk_file,
 )
 
@@ -718,6 +723,10 @@ def test_tracker_create_http_error(mock_get_session: MagicMock) -> None:
 @patch("osidb_mcp.tools_write.get_session")
 def test_trackers_bulk_file_dry_run(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [
@@ -761,11 +770,20 @@ def test_trackers_bulk_file_dry_run(mock_get_session: MagicMock) -> None:
     assert result["trackers"][0]["ps_update_stream"] == "rhel-9.4.0.z"
     assert result["trackers"][1]["ps_update_stream"] == "rhel-8.10.0.z"
     session.trackers.create.assert_not_called()
+    session.flaws.retrieve.assert_called_once_with("CVE-2024-1234")
+    session.trackers.file.assert_called_once_with(
+        {"flaw_uuids": ["70d80ad3-a8cf-4763-be08-799191d12860"]},
+        exclude_existing_trackers=True,
+    )
 
 
 @patch("osidb_mcp.tools_write.get_session")
 def test_trackers_bulk_file_executes_with_sync_optimization(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [
@@ -820,6 +838,10 @@ def test_trackers_bulk_file_executes_with_sync_optimization(mock_get_session: Ma
 @patch("osidb_mcp.tools_write.get_session")
 def test_trackers_bulk_file_only_selected_false(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [
@@ -859,6 +881,10 @@ def test_trackers_bulk_file_only_selected_false(mock_get_session: MagicMock) -> 
 @patch("osidb_mcp.tools_write.get_session")
 def test_trackers_bulk_file_no_matching_streams(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [
@@ -887,6 +913,10 @@ def test_trackers_bulk_file_no_matching_streams(mock_get_session: MagicMock) -> 
 @patch("osidb_mcp.tools_write.get_session")
 def test_trackers_bulk_file_partial_failure(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
+    flaw_mock = MagicMock()
+    flaw_mock.uuid = "70d80ad3-a8cf-4763-be08-799191d12860"
+    session.flaws.retrieve.return_value = flaw_mock
+
     suggestions = MagicMock()
     suggestions.to_dict.return_value = {
         "streams_components": [
@@ -922,6 +952,46 @@ def test_trackers_bulk_file_partial_failure(mock_get_session: MagicMock) -> None
     assert result["filed"] == 1
     assert result["failed"] == 1
     assert result["failures"][0]["ps_update_stream"] == "rhel-8.10.0.z"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_uuid_passthrough(mock_get_session: MagicMock) -> None:
+    """When flaw_id is already a UUID, no flaws.retrieve call is made."""
+    session = mock_get_session.return_value
+    suggestions = MagicMock()
+    suggestions.to_dict.return_value = {
+        "streams_components": [],
+        "not_applicable": [],
+    }
+    session.trackers.file.return_value = suggestions
+
+    result = trackers_bulk_file(
+        flaw_id="70d80ad3-a8cf-4763-be08-799191d12860",
+        dry_run=True,
+    )
+
+    session.flaws.retrieve.assert_not_called()
+    session.trackers.file.assert_called_once_with(
+        {"flaw_uuids": ["70d80ad3-a8cf-4763-be08-799191d12860"]},
+        exclude_existing_trackers=True,
+    )
+    assert result["ok"] is True
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_trackers_bulk_file_cve_resolution_failure(mock_get_session: MagicMock) -> None:
+    """When CVE ID cannot be resolved, return a clean error."""
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.json.return_value = {"detail": "Not found."}
+    http_error = requests.HTTPError(response=resp)
+    session.flaws.retrieve.side_effect = http_error
+
+    result = trackers_bulk_file(flaw_id="CVE-9999-99999")
+
+    assert result["ok"] is False
+    session.trackers.file.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1830,3 +1900,285 @@ def test_affect_update_bulk_missing_uuid(mock_get_session: MagicMock) -> None:
     )
     payloads = session.affects.bulk_update.call_args[0][0]
     assert len(payloads) == 1
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_update
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_flaw_package_version_update_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.to_dict.return_value = {
+        "package": "kernel",
+        "versions": [{"version": "5.14"}],
+        "embargoed": False,
+    }
+    current.updated_dt = "2026-01-01T00:00:00Z"
+    session.flaws.package_versions.retrieve.return_value = current
+
+    updated = MagicMock()
+    updated.to_dict.return_value = {
+        "uuid": "pkg-uuid-1",
+        "package": "kernel",
+        "versions": [{"version": "5.15"}],
+    }
+    session.flaws.package_versions.update.return_value = updated
+
+    result = flaw_package_version_update(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        package_version_id="pkg-uuid-1",
+        versions=[{"version": "5.15"}],
+    )
+
+    assert result["ok"] is True
+    assert result["package_version"]["versions"][0]["version"] == "5.15"
+    session.flaws.package_versions.retrieve.assert_called_once()
+    session.flaws.package_versions.update.assert_called_once()
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_flaw_package_version_update_invalid_flaw_id(mock_get_session: MagicMock) -> None:
+    result = flaw_package_version_update(
+        flaw_id="not-a-uuid",
+        package_version_id="pkg-uuid-1",
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_remove
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_flaw_package_version_remove_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    result = flaw_package_version_remove(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        package_version_id="pkg-uuid-1",
+    )
+
+    assert result["ok"] is True
+    assert result["deleted"] == "pkg-uuid-1"
+    session.flaws.package_versions.delete.assert_called_once_with(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714", id="pkg-uuid-1",
+    )
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_flaw_package_version_remove_invalid_flaw_id(mock_get_session: MagicMock) -> None:
+    result = flaw_package_version_remove(
+        flaw_id="CVE-2024-1234",
+        package_version_id="pkg-uuid-1",
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_flaw_package_version_remove_http_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.flaws.package_versions.delete.side_effect = requests.HTTPError(response=resp)
+
+    result = flaw_package_version_remove(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        package_version_id="pkg-uuid-1",
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_score_add
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_score_add_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    affect = MagicMock()
+    affect.embargoed = False
+    session.affects.retrieve.return_value = affect
+
+    score_result = MagicMock()
+    score_result.to_dict.return_value = {
+        "uuid": "score-1",
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "score": 9.8,
+        "cvss_version": "V3",
+        "issuer": "RH",
+    }
+    session.affects.cvss_scores.create.return_value = score_result
+
+    result = affect_cvss_score_add(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    )
+
+    assert result["ok"] is True
+    assert result["cvss_score"]["uuid"] == "score-1"
+    session.affects.cvss_scores.create.assert_called_once()
+    call_data = session.affects.cvss_scores.create.call_args[1]["form_data"]
+    assert call_data["vector"] == "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    assert call_data["embargoed"] is False
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_score_add_explicit_embargoed(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    score_result = MagicMock()
+    score_result.to_dict.return_value = {"uuid": "score-2", "cvss_version": "V3"}
+    session.affects.cvss_scores.create.return_value = score_result
+
+    result = affect_cvss_score_add(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        embargoed=True,
+    )
+
+    assert result["ok"] is True
+    session.affects.retrieve.assert_not_called()
+    call_data = session.affects.cvss_scores.create.call_args[1]["form_data"]
+    assert call_data["embargoed"] is True
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_score_add_invalid_affect_id(mock_get_session: MagicMock) -> None:
+    result = affect_cvss_score_add(
+        affect_id="not-a-uuid",
+        vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_score_remove
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_score_remove_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    result = affect_cvss_score_remove(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_score_id="score-uuid-1",
+    )
+
+    assert result["ok"] is True
+    assert result["deleted"] == "score-uuid-1"
+    session.affects.cvss_scores.delete.assert_called_once_with(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714", id="score-uuid-1",
+    )
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_score_remove_invalid_affect_id(mock_get_session: MagicMock) -> None:
+    result = affect_cvss_score_remove(
+        affect_id="not-a-uuid",
+        cvss_score_id="score-uuid-1",
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_score_remove_http_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.affects.cvss_scores.delete.side_effect = requests.HTTPError(response=resp)
+
+    result = affect_cvss_score_remove(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_score_id="score-uuid-1",
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+
+
+# ---------------------------------------------------------------------------
+# tracker_update
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_tracker_update_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    current = MagicMock()
+    current.to_dict.return_value = {
+        "uuid": "trk-1",
+        "type": "JIRA",
+        "affects": ["affect-uuid-1"],
+        "ps_update_stream": "rhel-9.4.0.z",
+        "updated_dt": "2026-01-01T00:00:00Z",
+    }
+    session.trackers.retrieve.return_value = current
+
+    updated = MagicMock()
+    updated.to_dict.return_value = {
+        "uuid": "trk-1",
+        "type": "JIRA",
+        "affects": ["affect-uuid-1", "affect-uuid-2"],
+        "ps_update_stream": "rhel-9.4.0.z",
+    }
+    session.trackers.update.return_value = updated
+
+    result = tracker_update(
+        tracker_id="trk-1",
+        fields={"affects": ["affect-uuid-1", "affect-uuid-2"]},
+    )
+
+    assert result["ok"] is True
+    assert result["tracker"]["affects"] == ["affect-uuid-1", "affect-uuid-2"]
+    session.trackers.retrieve.assert_called_once_with("trk-1")
+    call_data = session.trackers.update.call_args[1]["form_data"]
+    assert "affect-uuid-2" in call_data["affects"]
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_tracker_update_retrieve_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.trackers.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = tracker_update(tracker_id="trk-bad", fields={"affects": []})
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_tracker_update_update_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+
+    current = MagicMock()
+    current.to_dict.return_value = {"uuid": "trk-1", "updated_dt": "2026-01-01T00:00:00Z"}
+    session.trackers.retrieve.return_value = current
+
+    resp = MagicMock()
+    resp.status_code = 409
+    resp.text = "Conflict"
+    session.trackers.update.side_effect = requests.HTTPError(response=resp)
+
+    result = tracker_update(tracker_id="trk-1", fields={"affects": []})
+
+    assert result["ok"] is False
+    assert result["status_code"] == 409
