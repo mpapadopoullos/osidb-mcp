@@ -511,16 +511,17 @@ def affect_update(
 
     Args:
         affect_uuid: Affect UUID (required).
-        affectedness: AFFECTED, NOT_AFFECTED, or NEW.
+        affectedness: AFFECTED, NOTAFFECTED, or NEW.
         resolution: FIX, DEFER, WONTFIX, OOSS, DELEGATED, or empty.
         impact: Override severity for this specific affect.
         ps_component: Product stream component name.
         purl: Package URL string.
         delegated_resolution: Delegated resolution value.
-        not_affected_justification: Justification when affectedness is
-            NOT_AFFECTED (e.g. VULNERABLE_CODE_NOT_PRESENT,
-            VULNERABLE_CODE_NOT_IN_FINAL_PRODUCT,
-            INLINE_MITIGATIONS_ALREADY_EXIST).
+        not_affected_justification: Required when affectedness is NOTAFFECTED.
+            Valid values: COMPONENT_NOT_PRESENT, VULNERABLE_CODE_NOT_PRESENT,
+            VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
+            VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY,
+            INLINE_MITIGATIONS_ALREADY_EXIST.
     """
     session = get_session()
 
@@ -1209,7 +1210,9 @@ def flaw_cvss_update(
 ) -> dict[str, Any]:
     """Update a CVSS score on a flaw (PUT /osidb/api/v1/flaws/{id}/cvss_scores/{id}).
 
-    Auto-fetches the current score to merge updates.
+    Uses raw HTTP to avoid an osidb-bindings serialization bug where
+    ``to_jsonable`` converts enums to strings and the bindings' ``update``
+    method later calls ``.copy()`` on them, raising AttributeError.
 
     Args:
         flaw_id: Flaw UUID or CVE id (required).
@@ -1244,11 +1247,18 @@ def flaw_cvss_update(
     if issuer is not None:
         data["issuer"] = issuer
 
+    client = session.get_client_with_new_access_token()
     try:
-        result = session.flaws.cvss_scores.update(
-            flaw_id, cvss_score_id, data, api_version="v1",
+        resp = requests.put(
+            f"{client.base_url}/osidb/api/v1/flaws/{flaw_id}/cvss_scores/{cvss_score_id}",
+            json=data,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
         )
-        return {"ok": True, "cvss_score": to_jsonable(result)}
+        resp.raise_for_status()
+        return {"ok": True, "cvss_score": resp.json()}
     except Exception as exc:
         return _error_response(exc)
 

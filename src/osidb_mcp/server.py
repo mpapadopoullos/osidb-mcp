@@ -402,7 +402,12 @@ def create_server(settings: Settings) -> FastMCP:
             description=(
                 "Update fields on an existing affect (PUT /osidb/api/v2/affects/{uuid}). "
                 "Auto-fetches the current affect for optimistic concurrency. "
-                "Only provided fields are changed; others keep current values."
+                "Only provided fields are changed; others keep current values. "
+                "Supports ``not_affected_justification`` (required when setting "
+                "affectedness to NOTAFFECTED; valid values: COMPONENT_NOT_PRESENT, "
+                "VULNERABLE_CODE_NOT_PRESENT, VULNERABLE_CODE_NOT_IN_EXECUTE_PATH, "
+                "VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY, "
+                "INLINE_MITIGATIONS_ALREADY_EXIST)."
             ),
         )(tools_write.affect_update)
 

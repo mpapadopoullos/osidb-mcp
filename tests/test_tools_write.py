@@ -592,27 +592,27 @@ def test_affect_update_success(mock_get_session: MagicMock) -> None:
 
 
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_not_affected_justification(mock_get_session: MagicMock) -> None:
+def test_affect_update_notaffected_with_justification(mock_get_session: MagicMock) -> None:
     session = mock_get_session.return_value
     current = _mock_affect_full()
     session.affects.retrieve.return_value = current
     updated = _mock_affect_full(
-        affectedness="NOT_AFFECTED",
-        not_affected_justification="VULNERABLE_CODE_NOT_PRESENT",
+        affectedness="NOTAFFECTED",
+        not_affected_justification="COMPONENT_NOT_PRESENT",
     )
     session.affects.update.return_value = updated
 
     result = affect_update(
         affect_uuid="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
-        affectedness="NOT_AFFECTED",
-        not_affected_justification="VULNERABLE_CODE_NOT_PRESENT",
+        affectedness="NOTAFFECTED",
+        not_affected_justification="COMPONENT_NOT_PRESENT",
     )
 
     assert result["ok"] is True
     session.affects.update.assert_called_once()
     update_data = session.affects.update.call_args[0][1]
-    assert update_data["affectedness"] == "NOT_AFFECTED"
-    assert update_data["not_affected_justification"] == "VULNERABLE_CODE_NOT_PRESENT"
+    assert update_data["affectedness"] == "NOTAFFECTED"
+    assert update_data["not_affected_justification"] == "COMPONENT_NOT_PRESENT"
 
 
 @patch("osidb_mcp.tools_write.get_session")
@@ -1439,8 +1439,9 @@ def test_ref_update_success(mock_get_session: MagicMock) -> None:
 # flaw_cvss_update tests
 # ---------------------------------------------------------------------------
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_cvss_update_success(mock_get_session: MagicMock) -> None:
+def test_cvss_update_success(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     current = MagicMock()
     current.vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"
@@ -1450,8 +1451,21 @@ def test_cvss_update_success(mock_get_session: MagicMock) -> None:
     current.embargoed = False
     current.updated_dt = "2026-06-08T12:00:00Z"
     session.flaws.cvss_scores.retrieve.return_value = current
-    updated = _mock_subresource("cvss-1")
-    session.flaws.cvss_scores.update.return_value = updated
+
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = {
+        "uuid": "cvss-1",
+        "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
+    }
+    mock_put.return_value = put_resp
 
     result = flaw_cvss_update(
         flaw_id="CVE-2026-52719",
@@ -1460,8 +1474,46 @@ def test_cvss_update_success(mock_get_session: MagicMock) -> None:
     )
 
     assert result["ok"] is True
-    update_data = session.flaws.cvss_scores.update.call_args[0][2]
-    assert update_data["vector"] == "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    assert result["cvss_score"]["vector"] == "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    mock_put.assert_called_once()
+    put_kwargs = mock_put.call_args
+    assert "cvss_scores/cvss-1" in put_kwargs[0][0]
+    assert put_kwargs[1]["json"]["vector"] == "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H"
+
+
+@patch("osidb_mcp.tools_write.requests.put")
+@patch("osidb_mcp.tools_write.get_session")
+def test_cvss_update_http_error(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    current.comment = ""
+    current.cvss_version = "V3"
+    current.issuer = "RH"
+    current.embargoed = False
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.flaws.cvss_scores.retrieve.return_value = current
+
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    resp = MagicMock()
+    resp.status_code = 400
+    resp.text = "Bad request"
+    mock_put.return_value = resp
+    resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
+
+    result = flaw_cvss_update(
+        flaw_id="CVE-2026-52719",
+        cvss_score_id="cvss-1",
+        vector="bad-vector",
+    )
+
+    assert result["ok"] is False
 
 
 # ---------------------------------------------------------------------------
