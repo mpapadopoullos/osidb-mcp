@@ -8,7 +8,7 @@ PIP          := $(PYTHON) -m pip
 PYTEST_ARGS  ?=
 TWINE        := $(PYTHON) -m twine
 
-.PHONY: help install sync test livetest test-uv audit check build clean upload version brew
+.PHONY: help install sync test livetest livetest-aegis test-uv audit check build clean upload version brew
 
 help:
 	@echo "osidb-mcp — common targets"
@@ -36,6 +36,9 @@ test:
 
 livetest:
 	$(PYTHON) -m pytest live_tests -vv -s $(PYTEST_ARGS)
+
+livetest-aegis:
+	$(PYTHON) -m pytest -m live_aegis -vv -s $(PYTEST_ARGS)
 
 test-uv:
 	uv run pytest tests $(PYTEST_ARGS)

@@ -1527,7 +1527,7 @@ def test_ack_update_success(mock_get_session: MagicMock) -> None:
     )
 
     assert result["ok"] is True
-    update_data = session.flaws.acknowledgments.update.call_args[0][2]
+    update_data = session.flaws.acknowledgments.update.call_args[0][1]
     assert update_data["name"] == "Updated Name"
     assert update_data["affiliation"] == "Org"
 
@@ -1574,7 +1574,7 @@ def test_ref_update_success(mock_get_session: MagicMock) -> None:
     )
 
     assert result["ok"] is True
-    update_data = session.flaws.references.update.call_args[0][2]
+    update_data = session.flaws.references.update.call_args[0][1]
     assert update_data["url"] == "https://new.com"
 
 

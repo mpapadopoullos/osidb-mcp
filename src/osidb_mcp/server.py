@@ -345,13 +345,17 @@ def create_server(settings: Settings) -> FastMCP:
     )(tools_aegis.aegis_run_cve_analysis)
     mcp.tool(
         name="aegis_get_component_analysis",
-        description="Retrieve AEGIS component-level analysis for a given feature and component name.",
+        description=(
+            "Retrieve AEGIS component-level analysis for a given feature and component name. "
+            "Currently the only valid feature_name is 'component-intelligence'."
+        ),
     )(tools_aegis.aegis_get_component_analysis)
     mcp.tool(
         name="aegis_get_kpi_metrics",
         description=(
             "Retrieve AEGIS KPI metrics for an analysis feature. "
-            "Useful for evaluating model quality and coverage."
+            "Useful for evaluating model quality and coverage. "
+            "Use feature_name 'all' to get KPIs for every feature."
         ),
     )(tools_aegis.aegis_get_kpi_metrics)
 

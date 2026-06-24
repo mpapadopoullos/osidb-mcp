@@ -59,4 +59,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
   "live_osidb: optional integration tests against a real OSIDB (under live_tests/)",
+  "live_aegis: optional integration tests against a real AEGIS instance",
 ]

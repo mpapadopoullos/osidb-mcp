@@ -31,6 +31,7 @@ def _aegis_request(
     if not base:
         return {"ok": False, "error": "aegis_not_configured", "detail": "AEGIS_URL not configured"}
 
+    base = base.rstrip("/")
     settings = current_settings()
 
     kwargs: dict[str, Any] = {
@@ -134,36 +135,35 @@ def aegis_run_cve_analysis(feature_name: str, body: dict[str, Any]) -> dict[str,
 def aegis_get_component_analysis(feature_name: str, component_name: str) -> dict[str, Any]:
     """Retrieve AEGIS component-level analysis for a given feature and component name.
 
-    Queries AEGIS for analysis results scoped to a specific component.
+    Queries the ``GET /api/v1/analysis/component`` endpoint for analysis
+    results scoped to a specific component.
 
     Args:
-        feature_name: The analysis feature to query. Valid features:
-            suggest-statement, suggest-impact, suggest-cwe,
-            suggest-description, suggest-affected-components,
-            identify-pii, cvss-diff-explainer.
+        feature_name: The analysis feature to query. Currently the only
+            valid value is ``component-intelligence``.
         component_name: The component name to analyze.
 
     Returns:
         JSON dict with ``ok`` and ``result`` containing the analysis output.
     """
     return _aegis_request(
-        "POST",
-        f"/api/v1/analysis/component/{feature_name}",
-        json_body={"component_name": component_name},
+        "GET",
+        "/api/v1/analysis/component",
+        params={"feature": feature_name, "component_name": component_name},
     )
 
 
 def aegis_get_kpi_metrics(feature_name: str, order: str = "desc") -> dict[str, Any]:
     """Retrieve AEGIS KPI metrics for an analysis feature.
 
-    Returns key performance indicators for a given analysis feature,
-    useful for evaluating model quality and coverage.
+    Queries the ``GET /api/v1/analysis/kpi/cve`` endpoint for key
+    performance indicators, useful for evaluating model quality and coverage.
 
     Args:
-        feature_name: The analysis feature to get KPIs for. Valid features:
+        feature_name: The analysis feature to get KPIs for. Valid values:
             suggest-statement, suggest-impact, suggest-cwe,
-            suggest-description, suggest-affected-components,
-            identify-pii, cvss-diff-explainer.
+            suggest-description, identify-pii, cvss-diff-explainer,
+            or ``all`` to retrieve KPIs for every feature.
         order: Sort order for results - "asc" or "desc" (default: "desc").
 
     Returns:
@@ -171,6 +171,6 @@ def aegis_get_kpi_metrics(feature_name: str, order: str = "desc") -> dict[str, A
     """
     return _aegis_request(
         "GET",
-        f"/api/v1/kpi/{feature_name}",
-        params={"order": order},
+        "/api/v1/analysis/kpi/cve",
+        params={"feature": feature_name, "order": order},
     )

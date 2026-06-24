@@ -204,7 +204,7 @@ def test_run_cve_analysis_server_error(mock_settings: MagicMock, mock_request: M
 
 
 # ---------------------------------------------------------------------------
-# aegis_get_component_analysis (POST-based)
+# aegis_get_component_analysis (GET-based, query params)
 # ---------------------------------------------------------------------------
 
 
@@ -218,14 +218,20 @@ def test_get_component_analysis_success(mock_settings: MagicMock, mock_request: 
     resp.raise_for_status.return_value = None
     mock_request.return_value = resp
 
-    result = aegis_get_component_analysis(feature_name="suggest-statement", component_name="curl")
+    result = aegis_get_component_analysis(
+        feature_name="component-intelligence", component_name="curl"
+    )
 
     assert result["ok"] is True
     assert result["result"]["component"] == "curl"
     call_args = mock_request.call_args
-    assert call_args[0][0] == "POST"
-    assert call_args[0][1] == f"{AEGIS_URL}/api/v1/analysis/component/suggest-statement"
-    assert call_args[1]["json"] == {"component_name": "curl"}
+    assert call_args[0][0] == "GET"
+    assert call_args[0][1] == f"{AEGIS_URL}/api/v1/analysis/component"
+    assert call_args[1]["params"] == {
+        "feature": "component-intelligence",
+        "component_name": "curl",
+    }
+    assert "json" not in call_args[1]
     _assert_has_cors_headers(call_args[1])
 
 
@@ -249,8 +255,8 @@ def test_get_kpi_metrics_success(mock_settings: MagicMock, mock_request: MagicMo
     assert result["ok"] is True
     assert result["result"]["accuracy"] == 0.92
     call_args = mock_request.call_args
-    assert call_args[0][1] == f"{AEGIS_URL}/api/v1/kpi/suggest-statement"
-    assert call_args[1]["params"] == {"order": "asc"}
+    assert call_args[0][1] == f"{AEGIS_URL}/api/v1/analysis/kpi/cve"
+    assert call_args[1]["params"] == {"feature": "suggest-statement", "order": "asc"}
     _assert_has_cors_headers(call_args[1])
 
 
@@ -268,7 +274,7 @@ def test_get_kpi_metrics_default_order(mock_settings: MagicMock, mock_request: M
 
     assert result["ok"] is True
     call_args = mock_request.call_args
-    assert call_args[1]["params"]["order"] == "desc"
+    assert call_args[1]["params"] == {"feature": "suggest-impact", "order": "desc"}
 
 
 # ---------------------------------------------------------------------------

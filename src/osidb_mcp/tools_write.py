@@ -1200,7 +1200,7 @@ def flaw_acknowledgment_update(
         data["from_upstream"] = from_upstream
 
     try:
-        result = session.flaws.acknowledgments.update(flaw_id, acknowledgment_id, data)  # ty:ignore[unresolved-attribute]
+        result = session.flaws.acknowledgments.update(flaw_id, data, acknowledgment_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "acknowledgment": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
@@ -1252,7 +1252,7 @@ def flaw_reference_update(
         data["type"] = reference_type
 
     try:
-        result = session.flaws.references.update(flaw_id, reference_id, data)  # ty:ignore[unresolved-attribute]
+        result = session.flaws.references.update(flaw_id, data, reference_id)  # ty:ignore[unresolved-attribute]
         return {"ok": True, "reference": to_jsonable(result)}
     except Exception as exc:
         return error_response(exc)
