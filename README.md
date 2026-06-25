@@ -21,6 +21,7 @@ uv pip install -e .
 | `OSIDB_USER_AGENT` | no | Optional extra User-Agent suffix |
 | `OSIDB_MCP_ACCESS_MODE` | no | `readonly` (default) or `readwrite`. Readwrite mode registers mutation tools (flaw create/update, affects, acknowledgments, references). |
 | `ENABLE_BUGZILLA_TOOLS` | no | `false` (default). When `true`, registers the `flaw_comment_create` tool (requires `readwrite` mode). |
+| `OSIM_URL` | no | OSIM origin URL used for CORS headers in AEGIS requests. Defaults to `https://osim.prodsec.redhat.com`. |
 
 Kerberos: the process must have a valid ticket (`kinit`) for the OSIDB HTTP service.
 

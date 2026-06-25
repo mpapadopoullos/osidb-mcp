@@ -35,12 +35,12 @@ def _aegis_request(
     settings = current_settings()
 
     kwargs: dict[str, Any] = {
-        "auth": HTTPSPNEGOAuth(),
+        "auth": HTTPSPNEGOAuth(delegate=True),
         "verify": settings.verify_ssl,
         "timeout": 300.0,
         "headers": {
-            "Origin": "https://osim.prodsec.redhat.com",
-            "Referer": "https://osim.prodsec.redhat.com/",
+            "Origin": settings.osim_url.rstrip("/"),
+            "Referer": settings.osim_url.rstrip("/"),
         },
     }
     if params:

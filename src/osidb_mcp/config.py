@@ -50,6 +50,7 @@ class Settings:
     jira_access_token: str | None = None
     jira_api_email: str | None = None
     aegis_url: str | None = None
+    osim_url: str = "https://osim.prodsec.redhat.com"
     enable_bugzilla_tools: bool = False
 
 
@@ -80,6 +81,7 @@ def load_settings() -> Settings:
     jira_email = os.environ.get("JIRA_API_EMAIL", "").strip() or None
 
     aegis_url = os.environ.get("AEGIS_URL", "").strip() or None
+    osim_url = os.environ.get("OSIM_URL", "").strip() or "https://osim.prodsec.redhat.com"
 
     return Settings(
         base_url=base,
@@ -93,5 +95,6 @@ def load_settings() -> Settings:
         jira_access_token=jira_token,
         jira_api_email=jira_email,
         aegis_url=aegis_url,
+        osim_url=osim_url,
         enable_bugzilla_tools=_env_bool("ENABLE_BUGZILLA_TOOLS", False),
     )
