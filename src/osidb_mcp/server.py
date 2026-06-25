@@ -492,18 +492,19 @@ def create_server(settings: Settings) -> FastMCP:
             ),
         )(tools_write.trackers_bulk_file)
 
-        mcp.tool(
-            name="flaw_comment_create",
-            description=(
-                "Create a comment on a flaw "
-                "(POST /osidb/api/v1/flaws/{id}/comments). "
-                "Auto-fetches the flaw's embargoed status. "
-                "Optional ``creator`` sets the comment author (defaults to authenticated user). "
-                "When ``internal=True``, the comment is posted directly to the flaw's "
-                "Jira issue instead of to OSIDB/Bugzilla. "
-                "Requires ``JIRA_URL``, ``JIRA_ACCESS_TOKEN``, and ``JIRA_API_EMAIL`` env vars."
-            ),
-        )(tools_write.flaw_comment_create)
+        if settings.enable_bugzilla_tools:
+            mcp.tool(
+                name="flaw_comment_create",
+                description=(
+                    "Create a comment on a flaw "
+                    "(POST /osidb/api/v1/flaws/{id}/comments). "
+                    "Auto-fetches the flaw's embargoed status. "
+                    "Optional ``creator`` sets the comment author (defaults to authenticated user). "
+                    "When ``internal=True``, the comment is posted directly to the flaw's "
+                    "Jira issue instead of to OSIDB/Bugzilla. "
+                    "Requires ``JIRA_URL``, ``JIRA_ACCESS_TOKEN``, and ``JIRA_API_EMAIL`` env vars."
+                ),
+            )(tools_write.flaw_comment_create)
 
         mcp.tool(
             name="flaw_label_add",

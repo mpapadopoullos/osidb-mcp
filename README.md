@@ -20,6 +20,7 @@ uv pip install -e .
 | `OSIDB_VERIFY_SSL` | no | `true` (default) or `false` (prefer `REQUESTS_CA_BUNDLE` for custom CAs) |
 | `OSIDB_USER_AGENT` | no | Optional extra User-Agent suffix |
 | `OSIDB_MCP_ACCESS_MODE` | no | `readonly` (default) or `readwrite`. Readwrite mode registers mutation tools (flaw create/update, affects, acknowledgments, references). |
+| `ENABLE_BUGZILLA_TOOLS` | no | `false` (default). When `true`, registers the `flaw_comment_create` tool (requires `readwrite` mode). |
 
 Kerberos: the process must have a valid ticket (`kinit`) for the OSIDB HTTP service.
 

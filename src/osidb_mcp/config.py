@@ -50,6 +50,7 @@ class Settings:
     jira_access_token: str | None = None
     jira_api_email: str | None = None
     aegis_url: str | None = None
+    enable_bugzilla_tools: bool = False
 
 
 def load_settings() -> Settings:
@@ -92,4 +93,5 @@ def load_settings() -> Settings:
         jira_access_token=jira_token,
         jira_api_email=jira_email,
         aegis_url=aegis_url,
+        enable_bugzilla_tools=_env_bool("ENABLE_BUGZILLA_TOOLS", False),
     )
