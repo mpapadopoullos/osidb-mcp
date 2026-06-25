@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -161,3 +162,29 @@ class TestComponentAnalysis:
 
         assert result["ok"] is False
         assert result.get("status_code") in (400, 422)
+
+
+# ---------------------------------------------------------------------------
+# Kerberos auth configuration
+# ---------------------------------------------------------------------------
+
+
+class TestKerberosAuth:
+    @patch("osidb_mcp.tools_aegis.requests.request")
+    def test_kerberos_delegation_enabled(self, mock_request: MagicMock) -> None:
+        """Verify that live-configured AEGIS requests use delegate=True."""
+        from requests_gssapi import HTTPSPNEGOAuth
+
+        resp = MagicMock()
+        resp.json.return_value = {"ok": True}
+        resp.raise_for_status.return_value = None
+        mock_request.return_value = resp
+
+        aegis_run_cve_analysis(
+            feature_name="suggest-statement", body=MINIMAL_CVE_BODY
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        auth = call_kwargs["auth"]
+        assert isinstance(auth, HTTPSPNEGOAuth)
+        assert auth.delegate is True

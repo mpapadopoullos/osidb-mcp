@@ -13,11 +13,7 @@ from osidb_mcp.tools_aegis import (
 )
 
 AEGIS_URL = "https://aegis.example.com"
-
-EXPECTED_HEADERS = {
-    "Origin": "https://osim.prodsec.redhat.com",
-    "Referer": "https://osim.prodsec.redhat.com/",
-}
+DEFAULT_OSIM_URL = "https://osim.example.com"
 
 SAMPLE_FLAW = {
     "cve_id": "CVE-2024-1234",
@@ -35,18 +31,24 @@ SAMPLE_FLAW = {
 }
 
 
-def _mock_settings(aegis_url: str | None = AEGIS_URL, verify_ssl: bool = True):
+def _mock_settings(
+    aegis_url: str | None = AEGIS_URL,
+    verify_ssl: bool = True,
+    osim_url: str = DEFAULT_OSIM_URL,
+):
     settings = MagicMock()
     settings.aegis_url = aegis_url
     settings.verify_ssl = verify_ssl
+    settings.osim_url = osim_url
     return settings
 
 
-def _assert_has_cors_headers(call_kwargs: dict) -> None:
+def _assert_has_cors_headers(call_kwargs: dict, osim_url: str = DEFAULT_OSIM_URL) -> None:
     """Verify that the request includes required Origin and Referer headers."""
     headers = call_kwargs.get("headers", {})
-    assert headers.get("Origin") == EXPECTED_HEADERS["Origin"]
-    assert headers.get("Referer") == EXPECTED_HEADERS["Referer"]
+    expected_origin = osim_url.rstrip("/")
+    assert headers.get("Origin") == expected_origin
+    assert headers.get("Referer") == expected_origin
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +90,7 @@ def test_get_cve_analysis_success(
 def test_get_cve_analysis_uses_spnego(
     mock_flaw_get: MagicMock, mock_settings: MagicMock, mock_request: MagicMock
 ) -> None:
-    """Verify that AEGIS requests use HTTPSPNEGOAuth directly."""
+    """Verify that AEGIS requests use HTTPSPNEGOAuth with delegation."""
     mock_settings.return_value = _mock_settings()
     mock_flaw_get.return_value = {"ok": True, "flaw": SAMPLE_FLAW}
 
@@ -101,9 +103,42 @@ def test_get_cve_analysis_uses_spnego(
 
     call_kwargs = mock_request.call_args[1]
     assert isinstance(call_kwargs["auth"], HTTPSPNEGOAuth)
+    assert call_kwargs["auth"].delegate is True
     assert call_kwargs["verify"] is True
     assert call_kwargs["timeout"] == 300.0
     _assert_has_cors_headers(call_kwargs)
+
+
+@patch("osidb_mcp.tools_aegis.requests.request")
+@patch("osidb_mcp.tools_aegis.current_settings")
+@patch("osidb_mcp.tools_read.flaw_get")
+def test_all_aegis_tools_use_kerberos_delegation(
+    mock_flaw_get: MagicMock, mock_settings: MagicMock, mock_request: MagicMock
+) -> None:
+    """Every AEGIS tool must pass delegate=True to HTTPSPNEGOAuth."""
+    mock_settings.return_value = _mock_settings()
+    mock_flaw_get.return_value = {"ok": True, "flaw": SAMPLE_FLAW}
+
+    resp = MagicMock()
+    resp.json.return_value = {}
+    resp.raise_for_status.return_value = None
+    mock_request.return_value = resp
+
+    calls = [
+        lambda: aegis_get_cve_analysis(feature_name="suggest-statement", cve_id="CVE-2024-1234"),
+        lambda: aegis_run_cve_analysis(feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}),
+        lambda: aegis_get_component_analysis(feature_name="component-intelligence", component_name="curl"),
+        lambda: aegis_get_kpi_metrics(feature_name="suggest-statement"),
+    ]
+
+    for fn in calls:
+        mock_request.reset_mock()
+        fn()
+
+        call_kwargs = mock_request.call_args[1]
+        auth = call_kwargs["auth"]
+        assert isinstance(auth, HTTPSPNEGOAuth), f"{fn}: expected HTTPSPNEGOAuth, got {type(auth)}"
+        assert auth.delegate is True, f"{fn}: delegate must be True"
 
 
 @patch("osidb_mcp.tools_aegis.requests.request")
@@ -364,3 +399,46 @@ def test_kerberos_auth_failure(mock_settings: MagicMock, mock_request: MagicMock
     assert result["ok"] is False
     assert result["error"] == "osidb_http_error"
     assert result["status_code"] == 401
+
+
+# ---------------------------------------------------------------------------
+# Custom OSIM_URL flows through to CORS headers
+# ---------------------------------------------------------------------------
+
+
+@patch("osidb_mcp.tools_aegis.requests.request")
+@patch("osidb_mcp.tools_aegis.current_settings")
+def test_custom_osim_url_in_headers(mock_settings: MagicMock, mock_request: MagicMock) -> None:
+    custom_osim = "https://osim.staging.example.com"
+    mock_settings.return_value = _mock_settings(osim_url=custom_osim)
+
+    resp = MagicMock()
+    resp.json.return_value = {"ok": True}
+    resp.raise_for_status.return_value = None
+    mock_request.return_value = resp
+
+    aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
+
+    call_kwargs = mock_request.call_args[1]
+    _assert_has_cors_headers(call_kwargs, osim_url=custom_osim)
+
+
+@patch("osidb_mcp.tools_aegis.requests.request")
+@patch("osidb_mcp.tools_aegis.current_settings")
+def test_osim_url_trailing_slash_stripped(mock_settings: MagicMock, mock_request: MagicMock) -> None:
+    mock_settings.return_value = _mock_settings(osim_url="https://osim.example.com/")
+
+    resp = MagicMock()
+    resp.json.return_value = {}
+    resp.raise_for_status.return_value = None
+    mock_request.return_value = resp
+
+    aegis_run_cve_analysis(
+        feature_name="suggest-statement", body={"cve_id": "CVE-2024-1234"}
+    )
+
+    headers = mock_request.call_args[1]["headers"]
+    assert headers["Origin"] == "https://osim.example.com"
+    assert headers["Referer"] == "https://osim.example.com"
