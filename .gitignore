@@ -15,3 +15,6 @@ dist/
 *.live.env
 live_tests/.env
 live_tests/.env.*
+
+# Codegraph
+.codegraph/
